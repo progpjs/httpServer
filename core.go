@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package libHttpServer
+package httpServer
 
 import (
 	"mime/multipart"
@@ -30,12 +30,12 @@ type HttpServer interface {
 	Shutdown()
 	StartServer() error
 	GetHost(hostName string) *HttpHost
-	SetStartServerParams(params HttpServerStartParams)
+	SetStartServerParams(params StartParams)
 }
 
-// HttpServerStartParams will contains information on how
+// StartParams will contain information on how
 // to configure the server instance to create.
-type HttpServerStartParams struct {
+type StartParams struct {
 }
 
 // GetHttpServer allows to get the server instance

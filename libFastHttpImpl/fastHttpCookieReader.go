@@ -1,7 +1,7 @@
 package libFastHttpImpl
 
 import (
-	"github.com/progpjs/libHttpServer"
+	"github.com/progpjs/httpServer"
 	"github.com/valyala/fasthttp"
 	"time"
 )
@@ -18,8 +18,8 @@ func (m *fastHttpCookie) IsSecure() bool {
 	return m.fast.Secure()
 }
 
-func (m *fastHttpCookie) GetSameSiteType() libHttpServer.CookieSameSite {
-	return libHttpServer.CookieSameSite(m.fast.SameSite())
+func (m *fastHttpCookie) GetSameSiteType() httpServer.CookieSameSite {
+	return httpServer.CookieSameSite(m.fast.SameSite())
 }
 
 func (m *fastHttpCookie) GetKey() string {

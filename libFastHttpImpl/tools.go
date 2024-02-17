@@ -1,7 +1,7 @@
 package libFastHttpImpl
 
 import (
-	"github.com/progpjs/libHttpServer"
+	"github.com/progpjs/httpServer"
 	"unsafe"
 )
 
@@ -15,12 +15,12 @@ func UnsafeBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
-func GetFastHttpServer(serverPort int) libHttpServer.HttpServer {
-	server := libHttpServer.GetHttpServer(serverPort)
+func GetFastHttpServer(serverPort int) httpServer.HttpServer {
+	server := httpServer.GetHttpServer(serverPort)
 
 	if server == nil {
 		server = NewFastHttpServer(serverPort)
-		libHttpServer.RegisterServer(server)
+		httpServer.RegisterServer(server)
 	}
 
 	return server

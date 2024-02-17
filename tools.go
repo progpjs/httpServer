@@ -1,4 +1,4 @@
-package libHttpServer
+package httpServer
 
 /*
  * (C) Copyright 2024 Johan Michel PIQUET, France (https://johanpiquet.fr/).

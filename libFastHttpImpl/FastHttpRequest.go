@@ -2,7 +2,7 @@ package libFastHttpImpl
 
 import (
 	"bytes"
-	"github.com/progpjs/libHttpServer"
+	"github.com/progpjs/httpServer"
 	"github.com/valyala/fasthttp"
 	"net"
 	"sync"
@@ -16,20 +16,20 @@ type fastHttpRequest struct {
 
 	path       string
 	methodName string
-	methodCode libHttpServer.HttpMethod
-	host       *libHttpServer.HttpHost
+	methodCode httpServer.HttpMethod
+	host       *httpServer.HttpHost
 
 	mustStop   bool
 	isBodySend bool
 
 	unlockMutex *sync.Mutex
 	cookie      fastHttpCookie
-	resolvedUrl libHttpServer.UrlResolverResult
+	resolvedUrl httpServer.UrlResolverResult
 
-	multiPartForm *libHttpServer.HttpMultiPartForm
+	multiPartForm *httpServer.HttpMultiPartForm
 }
 
-func prepareFastHttpRequest(methodName string, methodCode libHttpServer.HttpMethod, reqPath string, fast *fasthttp.RequestCtx) fastHttpRequest {
+func prepareFastHttpRequest(methodName string, methodCode httpServer.HttpMethod, reqPath string, fast *fasthttp.RequestCtx) fastHttpRequest {
 	return fastHttpRequest{
 		methodName:        methodName,
 		methodCode:        methodCode,
@@ -44,7 +44,7 @@ func (m *fastHttpRequest) GetMethodName() string {
 	return m.methodName
 }
 
-func (m *fastHttpRequest) GetMethodCode() libHttpServer.HttpMethod {
+func (m *fastHttpRequest) GetMethodCode() httpServer.HttpMethod {
 	return m.methodCode
 }
 
@@ -89,16 +89,16 @@ func (m *fastHttpRequest) ReturnString(status int, text string) {
 	}
 }
 
-func (m *fastHttpRequest) GetQueryArgs() libHttpServer.ValueSet {
+func (m *fastHttpRequest) GetQueryArgs() httpServer.ValueSet {
 	r := m.fast.QueryArgs()
 	return r
 }
 
-func (m *fastHttpRequest) GetPostArgs() libHttpServer.ValueSet {
+func (m *fastHttpRequest) GetPostArgs() httpServer.ValueSet {
 	return m.fast.Request.PostArgs()
 }
 
-func (m *fastHttpRequest) SetCookie(key string, value string, cookie libHttpServer.HttpCookieOptions) error {
+func (m *fastHttpRequest) SetCookie(key string, value string, cookie httpServer.HttpCookieOptions) error {
 	var c fasthttp.Cookie
 
 	c.SetKey(key)
@@ -154,7 +154,7 @@ func (m *fastHttpRequest) IsMultipartForm() bool {
 	return bytes.HasPrefix(contentType, gContentTypeMultipartFormData)
 }
 
-func (m *fastHttpRequest) GetMultipartForm() (*libHttpServer.HttpMultiPartForm, error) {
+func (m *fastHttpRequest) GetMultipartForm() (*httpServer.HttpMultiPartForm, error) {
 	if m.multiPartForm != nil {
 		return m.multiPartForm, nil
 	}
@@ -164,7 +164,7 @@ func (m *fastHttpRequest) GetMultipartForm() (*libHttpServer.HttpMultiPartForm, 
 		return nil, err
 	}
 
-	var res = &libHttpServer.HttpMultiPartForm{
+	var res = &httpServer.HttpMultiPartForm{
 		Values: mpf.Value,
 		Files:  mpf.File,
 	}
@@ -196,7 +196,7 @@ func (m *fastHttpRequest) URI() string {
 	return UnsafeString(m.fast.RequestURI())
 }
 
-func (m *fastHttpRequest) GetHost() *libHttpServer.HttpHost {
+func (m *fastHttpRequest) GetHost() *httpServer.HttpHost {
 	return m.host
 }
 

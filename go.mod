@@ -1,4 +1,4 @@
-module github.com/progpjs/libHttpServer
+module github.com/progpjs/httpServer
 
 go 1.20
 

@@ -1,7 +1,7 @@
 package libFastHttpImpl
 
 import (
-	"github.com/progpjs/libHttpServer"
+	"github.com/progpjs/httpServer"
 	"github.com/valyala/fasthttp"
 	"strconv"
 	"sync"
@@ -10,16 +10,16 @@ import (
 type fastHttpServer struct {
 	port        int
 	isStarted   bool
-	startParams libHttpServer.HttpServerStartParams
+	startParams httpServer.StartParams
 
-	hosts      map[string]*libHttpServer.HttpHost
+	hosts      map[string]*httpServer.HttpHost
 	hostsMutex sync.Mutex
 }
 
 func NewFastHttpServer(port int) *fastHttpServer {
 	return &fastHttpServer{
 		port:  port,
-		hosts: make(map[string]*libHttpServer.HttpHost),
+		hosts: make(map[string]*httpServer.HttpHost),
 	}
 }
 
@@ -46,7 +46,7 @@ func (m *fastHttpServer) StartServer() error {
 		hostName := UnsafeString(fast.Host())
 		method := UnsafeString(fast.Method())
 		path := UnsafeString(fast.Path())
-		methodCode := libHttpServer.MethodNameToMethodCode(method)
+		methodCode := httpServer.MethodNameToMethodCode(method)
 
 		req := prepareFastHttpRequest(method, methodCode, path, fast)
 
@@ -74,7 +74,7 @@ func (m *fastHttpServer) StartServer() error {
 
 		if resolvedUrl.Middlewares != nil {
 			for _, h := range resolvedUrl.Middlewares {
-				err := h.(libHttpServer.HttpMiddleware)(&req)
+				err := h.(httpServer.HttpMiddleware)(&req)
 
 				if err != nil {
 					host.OnError(&req, err)
@@ -87,7 +87,7 @@ func (m *fastHttpServer) StartServer() error {
 			}
 		}
 
-		err := resolvedUrl.Target.(libHttpServer.HttpMiddleware)(&req)
+		err := resolvedUrl.Target.(httpServer.HttpMiddleware)(&req)
 		if err != nil {
 			host.OnError(&req, err)
 		}
@@ -101,7 +101,7 @@ func (m *fastHttpServer) StartServer() error {
 	return err
 }
 
-func (m *fastHttpServer) GetHost(hostName string) *libHttpServer.HttpHost {
+func (m *fastHttpServer) GetHost(hostName string) *httpServer.HttpHost {
 	m.hostsMutex.Lock()
 	defer m.hostsMutex.Unlock()
 
@@ -109,13 +109,13 @@ func (m *fastHttpServer) GetHost(hostName string) *libHttpServer.HttpHost {
 	host := m.hosts[hostName]
 
 	if host == nil {
-		host = libHttpServer.NewHttpHost(hostName, m, nil)
+		host = httpServer.NewHttpHost(hostName, m, nil)
 		m.hosts[hostName] = host
 	}
 
 	return host
 }
 
-func (m *fastHttpServer) SetStartServerParams(params libHttpServer.HttpServerStartParams) {
+func (m *fastHttpServer) SetStartServerParams(params httpServer.StartParams) {
 	m.startParams = params
 }

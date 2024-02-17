@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package libHttpServer
+package httpServer
 
 import (
 	"sort"
