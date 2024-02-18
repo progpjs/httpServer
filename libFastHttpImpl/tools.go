@@ -1,7 +1,7 @@
 package libFastHttpImpl
 
 import (
-	"github.com/progpjs/httpServer"
+	"github.com/progpjs/httpServer/v2"
 	"unsafe"
 )
 

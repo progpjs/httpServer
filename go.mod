@@ -1,4 +1,4 @@
-module github.com/progpjs/httpServer
+module github.com/progpjs/httpServer/v2
 
 go 1.20
 

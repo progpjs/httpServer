@@ -2,7 +2,7 @@ package libFastHttpImpl
 
 import (
 	"bytes"
-	"github.com/progpjs/httpServer"
+	"github.com/progpjs/httpServer/v2"
 	"github.com/valyala/fasthttp"
 	"net"
 	"sync"
