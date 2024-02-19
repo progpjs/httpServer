@@ -98,8 +98,7 @@ type HttpRequest interface {
 	Return500ErrorPage(err error)
 	Return404UnknownPage()
 
-	SetUnlockMutex(mutex *sync.Mutex)
-	UnlockMutex()
+	WaitResponse()
 
 	MustStop() bool
 	StopRequest()

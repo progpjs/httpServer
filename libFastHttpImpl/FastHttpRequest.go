@@ -22,15 +22,15 @@ type fastHttpRequest struct {
 	mustStop   bool
 	isBodySend bool
 
-	unlockMutex *sync.Mutex
-	cookie      fastHttpCookie
-	resolvedUrl httpServer.UrlResolverResult
+	unlockMutex_ sync.Mutex
+	cookie       fastHttpCookie
+	resolvedUrl  httpServer.UrlResolverResult
 
 	multiPartForm *httpServer.HttpMultiPartForm
 }
 
-func prepareFastHttpRequest(methodName string, methodCode httpServer.HttpMethod, reqPath string, fast *fasthttp.RequestCtx) fastHttpRequest {
-	return fastHttpRequest{
+func prepareFastHttpRequest(methodName string, methodCode httpServer.HttpMethod, reqPath string, fast *fasthttp.RequestCtx) *fastHttpRequest {
+	m := fastHttpRequest{
 		methodName:        methodName,
 		methodCode:        methodCode,
 		path:              reqPath,
@@ -38,6 +38,9 @@ func prepareFastHttpRequest(methodName string, methodCode httpServer.HttpMethod,
 		fastResponse:      &fast.Response,
 		fastRequestHeader: &fast.Request.Header,
 	}
+
+	m.unlockMutex_.Lock()
+	return &m
 }
 
 func (m *fastHttpRequest) GetMethodName() string {
@@ -85,7 +88,7 @@ func (m *fastHttpRequest) ReturnString(status int, text string) {
 		m.fastResponse.SetStatusCode(status)
 		m.fastResponse.AppendBodyString(text)
 
-		m.UnlockMutex()
+		m.unlockMutex()
 	}
 }
 
@@ -204,17 +207,15 @@ func (m *fastHttpRequest) Return500ErrorPage(err error) {
 	m.host.OnError(m, err)
 }
 
+func (m *fastHttpRequest) WaitResponse() {
+	m.unlockMutex_.Lock()
+}
+
 func (m *fastHttpRequest) Return404UnknownPage() {
 }
 
-func (m *fastHttpRequest) SetUnlockMutex(mutex *sync.Mutex) {
-	m.unlockMutex = mutex
-}
-
-func (m *fastHttpRequest) UnlockMutex() {
-	if m.unlockMutex != nil {
-		m.unlockMutex.Unlock()
-	}
+func (m *fastHttpRequest) unlockMutex() {
+	m.unlockMutex_.Unlock()
 }
 
 func (m *fastHttpRequest) MustStop() bool {

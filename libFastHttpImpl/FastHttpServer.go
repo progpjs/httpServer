@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-type fastHttpServer struct {
+type FastHttpServer struct {
 	port        int
 	isStarted   bool
 	startParams httpServer.StartParams
@@ -16,28 +16,28 @@ type fastHttpServer struct {
 	hostsMutex sync.Mutex
 }
 
-func NewFastHttpServer(port int) *fastHttpServer {
-	return &fastHttpServer{
+func NewFastHttpServer(port int) *FastHttpServer {
+	return &FastHttpServer{
 		port:  port,
 		hosts: make(map[string]*httpServer.HttpHost),
 	}
 }
 
-func (m *fastHttpServer) GetPort() int {
+func (m *FastHttpServer) GetPort() int {
 	return m.port
 }
 
-func (m *fastHttpServer) IsStarted() bool {
+func (m *FastHttpServer) IsStarted() bool {
 	return m.isStarted
 }
 
-func (m *fastHttpServer) Shutdown() {
+func (m *FastHttpServer) Shutdown() {
 	if !m.isStarted {
 		return
 	}
 }
 
-func (m *fastHttpServer) StartServer() error {
+func (m *FastHttpServer) StartServer() error {
 	if m.isStarted {
 		return nil
 	}
@@ -60,13 +60,13 @@ func (m *fastHttpServer) StartServer() error {
 
 		resolver := host.GetUrlResolver(methodCode)
 		if resolver == nil {
-			host.OnNotFound(&req)
+			host.OnNotFound(req)
 			return
 		}
 
 		resolvedUrl := resolver.Find(path)
 		if resolvedUrl.Target == nil {
-			host.OnNotFound(&req)
+			host.OnNotFound(req)
 			return
 		}
 
@@ -74,10 +74,10 @@ func (m *fastHttpServer) StartServer() error {
 
 		if resolvedUrl.Middlewares != nil {
 			for _, h := range resolvedUrl.Middlewares {
-				err := h.(httpServer.HttpMiddleware)(&req)
+				err := h.(httpServer.HttpMiddleware)(req)
 
 				if err != nil {
-					host.OnError(&req, err)
+					host.OnError(req, err)
 					return
 				}
 
@@ -87,9 +87,9 @@ func (m *fastHttpServer) StartServer() error {
 			}
 		}
 
-		err := resolvedUrl.Target.(httpServer.HttpMiddleware)(&req)
+		err := resolvedUrl.Target.(httpServer.HttpMiddleware)(req)
 		if err != nil {
-			host.OnError(&req, err)
+			host.OnError(req, err)
 		}
 	})
 
@@ -101,7 +101,7 @@ func (m *fastHttpServer) StartServer() error {
 	return err
 }
 
-func (m *fastHttpServer) GetHost(hostName string) *httpServer.HttpHost {
+func (m *FastHttpServer) GetHost(hostName string) *httpServer.HttpHost {
 	m.hostsMutex.Lock()
 	defer m.hostsMutex.Unlock()
 
@@ -116,6 +116,6 @@ func (m *fastHttpServer) GetHost(hostName string) *httpServer.HttpHost {
 	return host
 }
 
-func (m *fastHttpServer) SetStartServerParams(params httpServer.StartParams) {
+func (m *FastHttpServer) SetStartServerParams(params httpServer.StartParams) {
 	m.startParams = params
 }
