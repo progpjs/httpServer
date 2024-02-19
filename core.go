@@ -109,6 +109,142 @@ type HttpRequest interface {
 
 //endregion
 
+//type HttpRequestResponseSpy
+
+type HttpRequestResponseSpy struct {
+	req          HttpRequest
+	StatusCode   int
+	ResponseText string
+	ContentType  string
+	Headers      map[string]string
+}
+
+var _ HttpRequest = new(HttpRequestResponseSpy)
+
+func NewHttpRequestResponseSpy(req HttpRequest) *HttpRequestResponseSpy {
+	return &HttpRequestResponseSpy{req: req, Headers: make(map[string]string)}
+}
+
+func (m *HttpRequestResponseSpy) GetMethodName() string {
+	return m.req.GetMethodName()
+}
+
+func (m *HttpRequestResponseSpy) GetMethodCode() HttpMethod {
+	return m.req.GetMethodCode()
+}
+
+func (m *HttpRequestResponseSpy) GetContentLength() int {
+	return m.req.GetContentLength()
+}
+
+func (m *HttpRequestResponseSpy) IsBodySend() bool {
+	return m.req.IsBodySend()
+}
+
+func (m *HttpRequestResponseSpy) GetContentType() string {
+	return m.req.GetContentType()
+}
+
+func (m *HttpRequestResponseSpy) SetContentType(contentType string) {
+	m.ContentType = contentType
+}
+
+func (m *HttpRequestResponseSpy) SetHeader(key, value string) {
+	m.Headers[key] = value
+	m.req.SetHeader(key, value)
+}
+
+func (m *HttpRequestResponseSpy) GetHeaders() map[string]string {
+	return m.req.GetHeaders()
+}
+
+func (m *HttpRequestResponseSpy) ReturnString(status int, text string) {
+	m.StatusCode = status
+	m.ResponseText = text
+	m.req.ReturnString(status, text)
+}
+
+func (m *HttpRequestResponseSpy) GetQueryArgs() ValueSet {
+	return m.req.GetQueryArgs()
+}
+
+func (m *HttpRequestResponseSpy) GetPostArgs() ValueSet {
+	return m.req.GetPostArgs()
+}
+
+func (m *HttpRequestResponseSpy) IsMultipartForm() bool {
+	return m.req.IsMultipartForm()
+}
+
+func (m *HttpRequestResponseSpy) GetMultipartForm() (*HttpMultiPartForm, error) {
+	return m.req.GetMultipartForm()
+}
+
+func (m *HttpRequestResponseSpy) GetCookie(name string) (map[string]any, error) {
+	return m.req.GetCookie(name)
+}
+
+func (m *HttpRequestResponseSpy) GetCookies() (map[string]map[string]any, error) {
+	return m.req.GetCookies()
+}
+
+func (m *HttpRequestResponseSpy) SetCookie(key string, value string, cookie HttpCookieOptions) error {
+	// TODO: save cookie in the spy dataa
+	return m.req.SetCookie(key, value, cookie)
+}
+
+func (m *HttpRequestResponseSpy) Path() string {
+	return m.req.Path()
+}
+
+func (m *HttpRequestResponseSpy) URI() string {
+	return m.req.URI()
+}
+
+func (m *HttpRequestResponseSpy) UserAgent() string {
+	return m.req.UserAgent()
+}
+
+func (m *HttpRequestResponseSpy) RemoteIP() string {
+	return m.req.RemoteIP()
+}
+
+func (m *HttpRequestResponseSpy) GetHost() *HttpHost {
+	return m.req.GetHost()
+}
+
+func (m *HttpRequestResponseSpy) Return500ErrorPage(err error) {
+	m.StatusCode = 500
+	m.req.Return500ErrorPage(err)
+}
+
+func (m *HttpRequestResponseSpy) Return404UnknownPage() {
+	m.StatusCode = 404
+	m.req.Return404UnknownPage()
+}
+
+func (m *HttpRequestResponseSpy) WaitResponse() {
+	m.req.WaitResponse()
+}
+
+func (m *HttpRequestResponseSpy) MustStop() bool {
+	return m.req.MustStop()
+}
+
+func (m *HttpRequestResponseSpy) StopRequest() {
+	m.req.StopRequest()
+}
+
+func (m *HttpRequestResponseSpy) GetWildcards() []string {
+	return m.req.GetWildcards()
+}
+
+func (m *HttpRequestResponseSpy) GetRemainingSegment() []string {
+	return m.req.GetRemainingSegment()
+}
+
+//endregion
+
 //region Enum HttpMethod
 
 type HttpMethod int
