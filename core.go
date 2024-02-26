@@ -316,6 +316,7 @@ type HttpHost struct {
 	server       HttpServer
 	hostName     string
 	urlResolvers []*UrlResolver
+	allowHttps   bool
 }
 
 type HttpHostImpl interface {
@@ -345,6 +346,10 @@ func NewHttpHost(hostName string, server HttpServer, impl HttpHostImpl) *HttpHos
 	}
 
 	return res
+}
+
+func (m *HttpHost) AllowHttps() {
+	m.allowHttps = true
 }
 
 func (m *HttpHost) Impl() HttpHostImpl {

@@ -100,7 +100,16 @@ func (m *FastHttpServer) StartServer() error {
 		}
 	}
 
-	m.server = &fasthttp.Server{Handler: handler}
+	// Setting LogAllErrors to false avoid saturating the console.
+	m.server = &fasthttp.Server{Handler: handler, LogAllErrors: false}
+
+	// Use a fake server name for security, making less simple
+	// for hacker to known what server technologies is used.
+	m.server.Name = "Apache/2.4.38 (Debian)"
+
+	m.server.ErrorHandler = func(ctx *fasthttp.RequestCtx, err error) {
+		// Do nothing, avoid saturating the console.
+	}
 
 	sPort := ":" + strconv.Itoa(m.port)
 
@@ -108,6 +117,9 @@ func (m *FastHttpServer) StartServer() error {
 		var customServerStart func() error
 
 		for _, httpsInfo := range m.startParams.Certificates {
+			host := m.GetHost(httpsInfo.Hostname)
+			host.AllowHttps()
+
 			if httpsInfo.UseDevCertificate {
 				cert, priv, err := fasthttp.GenerateTestCertificate(httpsInfo.Hostname + sPort)
 				if err != nil {
