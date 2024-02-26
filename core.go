@@ -36,6 +36,10 @@ type HttpServer interface {
 // StartParams will contain information on how
 // to configure the server instance to create.
 type StartParams struct {
+	EnableHttps       bool   `json:"enableHttps"`
+	UseDevCertificate bool   `json:"useDevCertificate"`
+	CertFilePath      string `json:"certFilePath"`
+	KeyFilePath       string `json:"keyFilePath"`
 }
 
 // GetHttpServer allows to get the server instance
@@ -109,8 +113,10 @@ type HttpRequest interface {
 
 //endregion
 
-//type HttpRequestResponseSpy
+//region HttpRequestResponseSpy
 
+// HttpRequestResponseSpy is a middleware allowing to store the response
+// send to the client, mainly in order to save this response inside a cache.
 type HttpRequestResponseSpy struct {
 	req          HttpRequest
 	StatusCode   int

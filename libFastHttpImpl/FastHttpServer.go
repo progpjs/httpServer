@@ -3,6 +3,8 @@ package libFastHttpImpl
 import (
 	"github.com/progpjs/httpServer/v2"
 	"github.com/valyala/fasthttp"
+	"os"
+	"path"
 	"strconv"
 	"sync"
 )
@@ -14,6 +16,8 @@ type FastHttpServer struct {
 
 	hosts      map[string]*httpServer.HttpHost
 	hostsMutex sync.Mutex
+
+	server *fasthttp.Server
 }
 
 func NewFastHttpServer(port int) *FastHttpServer {
@@ -42,13 +46,13 @@ func (m *FastHttpServer) StartServer() error {
 		return nil
 	}
 
-	err := fasthttp.ListenAndServe(":"+strconv.Itoa(m.port), func(fast *fasthttp.RequestCtx) {
+	handler := func(fast *fasthttp.RequestCtx) {
 		hostName := UnsafeString(fast.Host())
 		method := UnsafeString(fast.Method())
-		path := UnsafeString(fast.Path())
+		rPath := UnsafeString(fast.Path())
 		methodCode := httpServer.MethodNameToMethodCode(method)
 
-		req := prepareFastHttpRequest(method, methodCode, path, fast)
+		req := prepareFastHttpRequest(method, methodCode, rPath, fast)
 
 		host := m.hosts[hostName]
 		if host == nil {
@@ -64,7 +68,7 @@ func (m *FastHttpServer) StartServer() error {
 			return
 		}
 
-		resolvedUrl := resolver.Find(path)
+		resolvedUrl := resolver.Find(rPath)
 		if resolvedUrl.Target == nil {
 			host.OnNotFound(req)
 			return
@@ -91,7 +95,51 @@ func (m *FastHttpServer) StartServer() error {
 		if err != nil {
 			host.OnError(req, err)
 		}
-	})
+	}
+
+	m.server = &fasthttp.Server{Handler: handler}
+
+	var err error
+	sPort := ":" + strconv.Itoa(m.port)
+
+	if m.startParams.EnableHttps {
+		if m.startParams.UseDevCertificate {
+			cert, priv, errCert := fasthttp.GenerateTestCertificate("localhost" + sPort)
+
+			if errCert != nil {
+				err = errCert
+			} else {
+				err = m.server.AppendCertEmbed(cert, priv)
+
+				if err == nil {
+					err = m.server.ListenAndServeTLS(sPort, "", "")
+				}
+			}
+		} else {
+			certFilePath := m.startParams.CertFilePath
+			keyFilePath := m.startParams.KeyFilePath
+
+			if !path.IsAbs(certFilePath) || !path.IsAbs(keyFilePath) {
+				cwd, _ := os.Getwd()
+
+				if !path.IsAbs(certFilePath) {
+					certFilePath = path.Join(cwd, certFilePath)
+				}
+
+				if !path.IsAbs(keyFilePath) {
+					keyFilePath = path.Join(cwd, keyFilePath)
+				}
+			}
+
+			err = m.server.AppendCert(certFilePath, keyFilePath)
+
+			if err == nil {
+				err = m.server.ListenAndServeTLS(sPort, "", "")
+			}
+		}
+	} else {
+		err = m.server.ListenAndServe(sPort)
+	}
 
 	if err == nil {
 		m.isStarted = true
@@ -105,7 +153,10 @@ func (m *FastHttpServer) GetHost(hostName string) *httpServer.HttpHost {
 	m.hostsMutex.Lock()
 	defer m.hostsMutex.Unlock()
 
-	hostName += ":" + strconv.Itoa(m.port)
+	if (m.port != 80) && (m.port != 443) {
+		hostName += ":" + strconv.Itoa(m.port)
+	}
+
 	host := m.hosts[hostName]
 
 	if host == nil {
