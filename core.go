@@ -33,13 +33,18 @@ type HttpServer interface {
 	SetStartServerParams(params StartParams)
 }
 
-// StartParams will contain information on how
-// to configure the server instance to create.
-type StartParams struct {
-	EnableHttps       bool   `json:"enableHttps"`
+type HttpsCertificateParams struct {
+	Hostname          string
 	UseDevCertificate bool   `json:"useDevCertificate"`
 	CertFilePath      string `json:"certFilePath"`
 	KeyFilePath       string `json:"keyFilePath"`
+}
+
+// StartParams will contain information on how
+// to configure the server instance to create.
+type StartParams struct {
+	EnableHttps  bool                     `json:"enableHttps"`
+	Certificates []HttpsCertificateParams `json:"certificates"`
 }
 
 // GetHttpServer allows to get the server instance

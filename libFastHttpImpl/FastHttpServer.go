@@ -99,54 +99,57 @@ func (m *FastHttpServer) StartServer() error {
 
 	m.server = &fasthttp.Server{Handler: handler}
 
-	var err error
 	sPort := ":" + strconv.Itoa(m.port)
 
 	if m.startParams.EnableHttps {
-		if m.startParams.UseDevCertificate {
-			cert, priv, errCert := fasthttp.GenerateTestCertificate("localhost" + sPort)
+		for _, httpsInfo := range m.startParams.Certificates {
+			if httpsInfo.UseDevCertificate {
+				cert, priv, err := fasthttp.GenerateTestCertificate(httpsInfo.Hostname + sPort)
+				if err != nil {
+					return err
+				}
 
-			if errCert != nil {
-				err = errCert
-			} else {
 				err = m.server.AppendCertEmbed(cert, priv)
-
-				if err == nil {
-					err = m.server.ListenAndServeTLS(sPort, "", "")
+				if err != nil {
+					return err
 				}
-			}
-		} else {
-			certFilePath := m.startParams.CertFilePath
-			keyFilePath := m.startParams.KeyFilePath
+			} else {
+				certFilePath := httpsInfo.CertFilePath
+				keyFilePath := httpsInfo.KeyFilePath
 
-			if !path.IsAbs(certFilePath) || !path.IsAbs(keyFilePath) {
-				cwd, _ := os.Getwd()
+				if !path.IsAbs(certFilePath) || !path.IsAbs(keyFilePath) {
+					cwd, _ := os.Getwd()
 
-				if !path.IsAbs(certFilePath) {
-					certFilePath = path.Join(cwd, certFilePath)
+					if !path.IsAbs(certFilePath) {
+						certFilePath = path.Join(cwd, certFilePath)
+					}
+
+					if !path.IsAbs(keyFilePath) {
+						keyFilePath = path.Join(cwd, keyFilePath)
+					}
 				}
 
-				if !path.IsAbs(keyFilePath) {
-					keyFilePath = path.Join(cwd, keyFilePath)
+				err := m.server.AppendCert(certFilePath, keyFilePath)
+				if err != nil {
+					return err
 				}
-			}
-
-			err = m.server.AppendCert(certFilePath, keyFilePath)
-
-			if err == nil {
-				err = m.server.ListenAndServeTLS(sPort, "", "")
 			}
 		}
+
+		err := m.server.ListenAndServeTLS(sPort, "", "")
+		if err != nil {
+			return err
+		}
+
 	} else {
-		err = m.server.ListenAndServe(sPort)
+		err := m.server.ListenAndServe(sPort)
+		if err != nil {
+			return err
+		}
 	}
 
-	if err == nil {
-		m.isStarted = true
-		return nil
-	}
-
-	return err
+	m.isStarted = true
+	return nil
 }
 
 func (m *FastHttpServer) GetHost(hostName string) *httpServer.HttpHost {
