@@ -1,8 +1,11 @@
 package libFastHttpImpl
 
 import (
+	"crypto/tls"
 	"github.com/progpjs/httpServer/v2"
 	"github.com/valyala/fasthttp"
+	"golang.org/x/crypto/acme"
+	"golang.org/x/crypto/acme/autocert"
 	"os"
 	"path"
 	"strconv"
@@ -102,6 +105,8 @@ func (m *FastHttpServer) StartServer() error {
 	sPort := ":" + strconv.Itoa(m.port)
 
 	if m.startParams.EnableHttps {
+		var customServerStart func() error
+
 		for _, httpsInfo := range m.startParams.Certificates {
 			if httpsInfo.UseDevCertificate {
 				cert, priv, err := fasthttp.GenerateTestCertificate(httpsInfo.Hostname + sPort)
@@ -113,6 +118,32 @@ func (m *FastHttpServer) StartServer() error {
 				if err != nil {
 					return err
 				}
+			} else if httpsInfo.UseLetsEncrypt {
+				// Note: LetsEncrypt requires a CAA record on the DNS.
+				// It's why it can't be tested on a dev local server.
+				// See more: https://letsencrypt.org/docs/caa/
+				// Also: https://go-acme.github.io/lego/installation/
+
+				certCacheDir := httpsInfo.CertCacheDir
+
+				if !path.IsAbs(certCacheDir) {
+					cwd, _ := os.Getwd()
+					certCacheDir = path.Join(cwd, certCacheDir)
+					_ = os.MkdirAll(certCacheDir, os.ModePerm)
+				}
+
+				manager := &autocert.Manager{
+					Prompt:     autocert.AcceptTOS,
+					HostPolicy: autocert.HostWhitelist(httpsInfo.Hostname), // Replace with your domain.
+					Cache:      autocert.DirCache(certCacheDir),
+				}
+
+				if m.server.TLSConfig == nil {
+					m.server.TLSConfig = &tls.Config{}
+				}
+
+				m.server.TLSConfig.GetCertificate = manager.GetCertificate
+				m.server.TLSConfig.NextProtos = []string{"http/1.1", acme.ALPNProto}
 			} else {
 				certFilePath := httpsInfo.CertFilePath
 				keyFilePath := httpsInfo.KeyFilePath
@@ -136,9 +167,16 @@ func (m *FastHttpServer) StartServer() error {
 			}
 		}
 
-		err := m.server.ListenAndServeTLS(sPort, "", "")
-		if err != nil {
-			return err
+		if customServerStart == nil {
+			err := m.server.ListenAndServeTLS(sPort, "", "")
+			if err != nil {
+				return err
+			}
+		} else {
+			err := customServerStart()
+			if err != nil {
+				return err
+			}
 		}
 
 	} else {

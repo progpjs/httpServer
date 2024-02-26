@@ -38,6 +38,9 @@ type HttpsCertificateParams struct {
 	UseDevCertificate bool   `json:"useDevCertificate"`
 	CertFilePath      string `json:"certFilePath"`
 	KeyFilePath       string `json:"keyFilePath"`
+
+	UseLetsEncrypt bool
+	CertCacheDir   string `json:"certCacheDir"`
 }
 
 // StartParams will contain information on how
