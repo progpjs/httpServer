@@ -34,10 +34,9 @@ type HttpServer interface {
 }
 
 type HttpsCertificateParams struct {
-	Hostname          string
-	UseDevCertificate bool   `json:"useDevCertificate"`
-	CertFilePath      string `json:"certFilePath"`
-	KeyFilePath       string `json:"keyFilePath"`
+	Hostname     string
+	CertFilePath string `json:"certFilePath"`
+	KeyFilePath  string `json:"keyFilePath"`
 
 	UseLetsEncrypt bool
 	CertCacheDir   string `json:"certCacheDir"`

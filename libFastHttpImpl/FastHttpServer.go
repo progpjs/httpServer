@@ -44,6 +44,8 @@ func (m *FastHttpServer) Shutdown() {
 	}
 }
 
+const gMuteServer = false
+
 func (m *FastHttpServer) StartServer() error {
 	if m.isStarted {
 		return nil
@@ -101,14 +103,16 @@ func (m *FastHttpServer) StartServer() error {
 	}
 
 	// Setting LogAllErrors to false avoid saturating the console.
-	m.server = &fasthttp.Server{Handler: handler, LogAllErrors: false}
+	m.server = &fasthttp.Server{Handler: handler, LogAllErrors: !gMuteServer}
 
 	// Use a fake server name for security, making less simple
 	// for hacker to known what server technologies is used.
 	m.server.Name = "Apache/2.4.38 (Debian)"
 
-	m.server.ErrorHandler = func(ctx *fasthttp.RequestCtx, err error) {
-		// Do nothing, avoid saturating the console.
+	if gMuteServer {
+		m.server.ErrorHandler = func(ctx *fasthttp.RequestCtx, err error) {
+			// Do nothing, avoid saturating the console.
+		}
 	}
 
 	sPort := ":" + strconv.Itoa(m.port)
@@ -120,21 +124,18 @@ func (m *FastHttpServer) StartServer() error {
 			host := m.GetHost(httpsInfo.Hostname)
 			host.AllowHttps()
 
-			if httpsInfo.UseDevCertificate {
-				cert, priv, err := fasthttp.GenerateTestCertificate(httpsInfo.Hostname + sPort)
-				if err != nil {
-					return err
-				}
+			// Note: use of dev certificate has been remove since it's no more supported by browsers.
+			// If you want to create a dev certificate, then use mkcert:
+			// https://github.com/FiloSottile/mkcert
+			//
+			// 1- mkcert -install		--> create the root CA certificat, which is required to create your own test certificate.
+			// 2- mkcert localhost
 
-				err = m.server.AppendCertEmbed(cert, priv)
-				if err != nil {
-					return err
-				}
-			} else if httpsInfo.UseLetsEncrypt {
+			if httpsInfo.UseLetsEncrypt {
 				// Note: LetsEncrypt requires a CAA record on the DNS.
 				// It's why it can't be tested on a dev local server.
 				// See more: https://letsencrypt.org/docs/caa/
-				// Also: https://go-acme.github.io/lego/installation/
+				// Also for an alternative: https://go-acme.github.io/lego/installation/
 
 				certCacheDir := httpsInfo.CertCacheDir
 
@@ -146,7 +147,7 @@ func (m *FastHttpServer) StartServer() error {
 
 				manager := &autocert.Manager{
 					Prompt:     autocert.AcceptTOS,
-					HostPolicy: autocert.HostWhitelist(httpsInfo.Hostname), // Replace with your domain.
+					HostPolicy: autocert.HostWhitelist(httpsInfo.Hostname),
 					Cache:      autocert.DirCache(certCacheDir),
 				}
 
