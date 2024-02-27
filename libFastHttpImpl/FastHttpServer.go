@@ -44,8 +44,6 @@ func (m *FastHttpServer) Shutdown() {
 	}
 }
 
-const gMuteServer = false
-
 func (m *FastHttpServer) StartServer() error {
 	if m.isStarted {
 		return nil
@@ -103,16 +101,14 @@ func (m *FastHttpServer) StartServer() error {
 	}
 
 	// Setting LogAllErrors to false avoid saturating the console.
-	m.server = &fasthttp.Server{Handler: handler, LogAllErrors: !gMuteServer}
+	m.server = &fasthttp.Server{Handler: handler, LogAllErrors: false}
 
 	// Use a fake server name for security, making less simple
 	// for hacker to known what server technologies is used.
 	m.server.Name = "Apache/2.4.38 (Debian)"
 
-	if gMuteServer {
-		m.server.ErrorHandler = func(ctx *fasthttp.RequestCtx, err error) {
-			// Do nothing, avoid saturating the console.
-		}
+	m.server.ErrorHandler = func(ctx *fasthttp.RequestCtx, err error) {
+		// Do nothing, avoid saturating the console.
 	}
 
 	sPort := ":" + strconv.Itoa(m.port)
