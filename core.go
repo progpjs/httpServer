@@ -116,6 +116,9 @@ type HttpRequest interface {
 
 	GetWildcards() []string
 	GetRemainingSegment() []string
+
+	SendFile(filePath string) error
+	SendFileAsIs(filePath string, mimeType string, contentEncoding string) error
 }
 
 //endregion
@@ -130,6 +133,8 @@ type HttpRequestResponseSpy struct {
 	ResponseText string
 	ContentType  string
 	Headers      map[string]string
+
+	IsSendingFile string
 }
 
 var _ HttpRequest = new(HttpRequestResponseSpy)
@@ -256,6 +261,17 @@ func (m *HttpRequestResponseSpy) GetRemainingSegment() []string {
 	return m.req.GetRemainingSegment()
 }
 
+func (m *HttpRequestResponseSpy) SendFileAsIs(filePath string, contentType string, contentEncoding string) error {
+	m.IsSendingFile = filePath
+	m.ContentType = contentType
+	return m.req.SendFileAsIs(filePath, contentType, contentEncoding)
+}
+
+func (m *HttpRequestResponseSpy) SendFile(filePath string) error {
+	m.IsSendingFile = filePath
+	return m.req.SendFile(filePath)
+}
+
 //endregion
 
 //region Enum HttpMethod
@@ -293,7 +309,7 @@ type HttpCookieOptions struct {
 	IsHttpOnly   bool
 	IsSecure     bool
 	SameSiteType CookieSameSite
-	Domaine      string
+	Domain       string
 	ExpireTime   int64
 	MaxAge       int
 }
