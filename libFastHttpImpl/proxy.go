@@ -1,7 +1,9 @@
 package libFastHttpImpl
 
 import (
+	"errors"
 	"github.com/progpjs/httpServer/v2"
+	"github.com/progpjs/progpAPI/v2"
 	"github.com/valyala/fasthttp"
 	"time"
 )
@@ -29,7 +31,18 @@ func BuildProxyAsIsMiddleware(targetHostName string, timeOutInSec int64) (httpSe
 		//uri.CopyTo(callUri)
 
 		err := fasthttp.DoTimeout(&fastCall.Request, &fastCall.Response, time.Second*(time.Duration)(timeOutInSec))
-		//err := gFetchHttpClient.Do(&fastCall.Request, resp)
+
+		if err != nil {
+			// Occurs when network error.
+			//
+			if errors.Is(err, fasthttp.ErrConnectionClosed) {
+				// Try again.
+				progpAPI.PauseMs(10)
+				fastCall.Response.Reset()
+				err = fasthttp.DoTimeout(&fastCall.Request, &fastCall.Response, time.Second*(time.Duration)(timeOutInSec))
+			}
+		}
+
 		return err
 	}, nil
 }

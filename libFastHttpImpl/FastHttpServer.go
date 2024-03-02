@@ -21,7 +21,8 @@ type FastHttpServer struct {
 	hosts      map[string]*httpServer.HttpHost
 	hostsMutex sync.Mutex
 
-	server *fasthttp.Server
+	server           *fasthttp.Server
+	hideServerErrors bool
 }
 
 func NewFastHttpServer(port int) *FastHttpServer {
@@ -113,13 +114,17 @@ func (m *FastHttpServer) StartServer() error {
 		ReadTimeout: time.Second * 10,
 	}
 
+	if m.hideServerErrors {
+		m.server.LogAllErrors = false
+
+		m.server.ErrorHandler = func(ctx *fasthttp.RequestCtx, err error) {
+			// Do nothing, avoid saturating the console.
+		}
+	}
+
 	// Use a fake server name for security, making less simple
 	// for hacker to known what server technologies is used.
 	m.server.Name = "Apache/2.4.38 (Debian)"
-
-	m.server.ErrorHandler = func(ctx *fasthttp.RequestCtx, err error) {
-		// Do nothing, avoid saturating the console.
-	}
 
 	sPort := ":" + strconv.Itoa(m.port)
 
