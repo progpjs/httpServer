@@ -45,6 +45,8 @@ type HttpsCertificateParams struct {
 // StartParams will contain information on how
 // to configure the server instance to create.
 type StartParams struct {
+	// HideErrors allows to hide server error and don't write message in the console.
+	HideErrors   bool                     `json:"hideErrors"`
 	EnableHttps  bool                     `json:"enableHttps"`
 	Certificates []HttpsCertificateParams `json:"certificates"`
 }
