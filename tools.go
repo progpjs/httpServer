@@ -47,7 +47,7 @@ func MethodNameToMethodCode(method string) HttpMethod {
 	}
 }
 
-func SaveStreamToFile(reader io.Reader, outFilePath string) error {
+func SaveStreamBodyToFile(reader io.Reader, outFilePath string) error {
 	fo, err := os.Create(outFilePath)
 	if err != nil {
 		err = os.MkdirAll(path.Dir(outFilePath), os.ModePerm)
