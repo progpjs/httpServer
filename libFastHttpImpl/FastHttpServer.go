@@ -10,6 +10,7 @@ import (
 	"path"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type FastHttpServer struct {
@@ -101,7 +102,16 @@ func (m *FastHttpServer) StartServer() error {
 	}
 
 	// Setting LogAllErrors to false avoid saturating the console.
-	m.server = &fasthttp.Server{Handler: handler, LogAllErrors: false}
+	m.server = &fasthttp.Server{
+		Handler:      handler,
+		LogAllErrors: false,
+
+		// Limit body size to 4Mo.
+		MaxRequestBodySize: 4 * 1024 * 1024,
+
+		// Limit to 10sec for receiving the complete request.
+		ReadTimeout: time.Second * 10,
+	}
 
 	// Use a fake server name for security, making less simple
 	// for hacker to known what server technologies is used.

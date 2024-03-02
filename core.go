@@ -353,7 +353,7 @@ func NewHttpHost(hostName string, server HttpServer, impl HttpHostImpl) *HttpHos
 		server:   server,
 	}
 
-	count := int(HttpMethodPATCH)
+	count := int(HttpMethodPATCH) + 1
 	res.urlResolvers = make([]*UrlResolver, count)
 
 	for i := 0; i < count; i++ {
@@ -422,6 +422,18 @@ func (m *HttpHost) CONNECT(path string, h HttpMiddleware) {
 }
 
 func (m *HttpHost) PATCH(path string, h HttpMiddleware) {
+	m.urlResolvers[HttpMethodPATCH].Add(path, h, m)
+}
+
+func (m *HttpHost) AllVerbs(path string, h HttpMiddleware) {
+	m.urlResolvers[HttpMethodGET].Add(path, h, m)
+	m.urlResolvers[HttpMethodPOST].Add(path, h, m)
+	m.urlResolvers[HttpMethodHEAD].Add(path, h, m)
+	m.urlResolvers[HttpMethodPUT].Add(path, h, m)
+	m.urlResolvers[HttpMethodDELETE].Add(path, h, m)
+	m.urlResolvers[HttpMethodCONNECT].Add(path, h, m)
+	m.urlResolvers[HttpMethodOPTIONS].Add(path, h, m)
+	m.urlResolvers[HttpMethodTRACE].Add(path, h, m)
 	m.urlResolvers[HttpMethodPATCH].Add(path, h, m)
 }
 

@@ -11,14 +11,14 @@ import (
 	"time"
 )
 
-var gHttpClient *fasthttp.Client
-var gHttpClientMutex sync.Mutex
+var gFetchHttpClient *fasthttp.Client
+var gFetchHttpClientMutex sync.Mutex
 
-func initHttpClient() {
-	gHttpClientMutex.Lock()
-	defer gHttpClientMutex.Unlock()
+func initFetchHttpClient() {
+	gFetchHttpClientMutex.Lock()
+	defer gFetchHttpClientMutex.Unlock()
 
-	if gHttpClient != nil {
+	if gFetchHttpClient != nil {
 		return
 	}
 
@@ -30,7 +30,7 @@ func initHttpClient() {
 
 	maxIdleConnDuration := time.Hour * 1
 
-	gHttpClient = &fasthttp.Client{
+	gFetchHttpClient = &fasthttp.Client{
 		ReadTimeout:         readTimeout,
 		WriteTimeout:        writeTimeout,
 		MaxIdleConnDuration: maxIdleConnDuration,
@@ -63,8 +63,8 @@ func initHttpClient() {
 }
 
 func Fetch(url string, methodName string, options FetchOptions) (httpServer.FetchResult, error) {
-	if gHttpClient == nil {
-		initHttpClient()
+	if gFetchHttpClient == nil {
+		initFetchHttpClient()
 	}
 
 	portIdx := strings.Index(url, ":")
@@ -88,6 +88,14 @@ func Fetch(url string, methodName string, options FetchOptions) (httpServer.Fetc
 		req.SetBody(options.Body)
 	}
 
+	if options.ContentType != "" {
+		req.Header.SetContentType(options.ContentType)
+	}
+
+	if options.UserAgent != "" {
+		req.Header.SetUserAgent(options.UserAgent)
+	}
+
 	req.SetRequestURI(url)
 	req.Header.SetMethod(methodName)
 
@@ -104,11 +112,12 @@ func Fetch(url string, methodName string, options FetchOptions) (httpServer.Fetc
 	}
 
 	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
 	resp.SkipBody = options.SkipBody
 
-	err := gHttpClient.Do(req, resp)
+	err := gFetchHttpClient.Do(req, resp)
 	if err != nil {
-		fasthttp.ReleaseResponse(resp)
 		return nil, err
 	}
 
@@ -120,6 +129,8 @@ type FetchOptions struct {
 	SendCookies map[string]string
 	SkipBody    bool
 
+	UserAgent        string
+	ContentType      string
 	Body             []byte
 	BodyStreamWriter func(w *bufio.Writer)
 }
