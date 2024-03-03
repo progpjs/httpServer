@@ -1,22 +1,26 @@
 package libFastHttpImpl
 
 import (
+	"compress/gzip"
 	"errors"
 	"github.com/progpjs/httpServer/v2"
 	"github.com/valyala/fasthttp"
+	"io"
+	"io/fs"
 	"mime"
 	"os"
 	"path"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 //region SimpleFileCache
 
 type SimpleFileCache struct {
-	byUrl      map[string]*simpleFileCacheEntry
-	byUrlMutex sync.RWMutex
+	byURI map[string]*simpleFileCacheEntry
+	mutex sync.RWMutex
 
 	baseDir  string
 	basePath string
@@ -25,20 +29,21 @@ type SimpleFileCache struct {
 type simpleFileCacheEntry struct {
 	counter int
 
-	filePath string
+	filePath      string
+	contentLength int
 
-	mimeType          string
+	gzipFilePath      string
+	gzipContentLength int
+
 	contentType       string
-	contentLength     int
-	lastModifiedSince int64
-	isBigFile         bool
+	lastModifiedSince time.Time
 }
 
 func NewSimpleFileCache(basePath string, baseDir string, _ StaticFileServerOptions) *SimpleFileCache {
 	return &SimpleFileCache{
 		basePath: basePath,
 		baseDir:  baseDir,
-		byUrl:    make(map[string]*simpleFileCacheEntry),
+		byURI:    make(map[string]*simpleFileCacheEntry),
 	}
 }
 
@@ -46,11 +51,11 @@ func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest, rewrite httpS
 	// Avoid using an unsafe string du to strange behaviors
 	// when using the string as map key.
 	//
-	url := call.URI() + "!"
+	uri := call.URI() + "!"
 
-	m.byUrlMutex.RLock()
-	cacheEntry := m.byUrl[url]
-	m.byUrlMutex.RUnlock()
+	m.mutex.RLock()
+	cacheEntry := m.byURI[uri]
+	m.mutex.RUnlock()
 
 	if cacheEntry != nil {
 		cacheEntry.counter++
@@ -85,14 +90,14 @@ func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest, rewrite httpS
 		}
 
 		if !strings.HasPrefix(filePath, m.basePath) {
-			return false, errors.New("invalid url")
+			return false, errors.New("invalid uri")
 		}
 
 		filePath = path.Join(m.baseDir, filePath[len(m.basePath):])
 	}
 
 	var err error
-	cacheEntry, err = m.addFileToCache(url, filePath)
+	cacheEntry, err = m.addFileToCache(uri, filePath)
 	if err != nil {
 		return false, err
 	}
@@ -113,7 +118,14 @@ func (m *SimpleFileCache) sendFile(call httpServer.HttpRequest, cacheEntry *simp
 	fastRequest := call.(*fastHttpRequest)
 	ctx := fastRequest.fast
 
+	if !ctx.IfModifiedSince(cacheEntry.lastModifiedSince) {
+		ctx.NotModified()
+		return nil
+	}
+
 	hdr := &ctx.Response.Header
+	hdr.SetLastModified(cacheEntry.lastModifiedSince)
+
 	statusCode := 200
 
 	defer func() {
@@ -128,23 +140,37 @@ func (m *SimpleFileCache) sendFile(call httpServer.HttpRequest, cacheEntry *simp
 
 		ctx.Response.ResetBody()
 		ctx.Response.SkipBody = true
-		ctx.SetContentType(cacheEntry.mimeType)
-		hdr.SetContentLength(cacheEntry.contentLength)
+		ctx.SetContentType(cacheEntry.contentType)
 
-		/*if cacheEntry.contentEncoding != "" {
-			hdr.SetContentEncoding(cacheEntry.contentEncoding)
-		}*/
+		if cacheEntry.gzipFilePath == "" {
+			hdr.SetContentLength(cacheEntry.contentLength)
+		} else {
+			hdr.SetContentLength(cacheEntry.gzipContentLength)
+			hdr.SetContentEncodingBytes(gGzipContentEncoding)
+		}
 	} else {
-		reader := NewFsFileReader(cacheEntry.filePath)
+		var filePath string
+		var contentLength int
+		var isGip bool
+
+		if cacheEntry.gzipFilePath == "" {
+			filePath = cacheEntry.filePath
+			contentLength = cacheEntry.contentLength
+		} else {
+			filePath = cacheEntry.gzipFilePath
+			contentLength = cacheEntry.gzipContentLength
+			isGip = true
+		}
+
+		reader := NewFsFileReader(filePath)
 
 		// "Range" header allows to request only a part of the file.
 		// This allows to move the cursor of a video, or resume a big download.
 		//
 		byteRange := ctx.Request.Header.PeekBytes(gHeaderRange)
-		contentLength := cacheEntry.contentLength
 
 		if len(byteRange) > 0 {
-			initialContentLength := cacheEntry.contentLength
+			initialContentLength := contentLength
 
 			startPos, endPos, err := fasthttp.ParseByteRange(byteRange, contentLength)
 			diff := endPos - startPos
@@ -189,17 +215,17 @@ func (m *SimpleFileCache) sendFile(call httpServer.HttpRequest, cacheEntry *simp
 
 		ctx.SetBodyStream(reader, contentLength)
 		hdr.SetContentLength(contentLength)
-		hdr.SetContentType(cacheEntry.mimeType)
+		hdr.SetContentType(cacheEntry.contentType)
 
-		/*if cacheEntry.contentEncoding != "" {
-			hdr.SetContentEncoding(cacheEntry.contentEncoding)
-		}*/
+		if isGip {
+			hdr.SetContentEncodingBytes(gGzipContentEncoding)
+		}
 	}
 
 	return nil
 }
 
-func (m *SimpleFileCache) addFileToCache(url string, filePath string) (*simpleFileCacheEntry, error) {
+func (m *SimpleFileCache) addFileToCache(uri string, filePath string) (*simpleFileCacheEntry, error) {
 	fileStat, err := os.Stat(filePath)
 	if err != nil {
 		return nil, nil
@@ -218,17 +244,128 @@ func (m *SimpleFileCache) addFileToCache(url string, filePath string) (*simpleFi
 	cacheEntry := &simpleFileCacheEntry{
 		counter:           1,
 		filePath:          filePath,
-		mimeType:          mimeType,
+		contentType:       mimeType,
 		contentLength:     contentLength,
-		lastModifiedSince: lastModifiedSince.Sec,
-		isBigFile:         contentLength >= gBigFileMinSize,
+		lastModifiedSince: time.Unix(lastModifiedSince.Sec, lastModifiedSince.Nsec),
 	}
 
-	m.byUrlMutex.Lock()
-	m.byUrl[url] = cacheEntry
-	m.byUrlMutex.Unlock()
+	m.mutex.Lock()
+	m.byURI[uri] = cacheEntry
+	m.mutex.Unlock()
+
+	gzipFilePath := filePath + ".gzip"
+
+	if contentLength < gDontCompressOverSize {
+		// We always rebuild the gzip version in order to prevent errors
+		// where the gzip version is ko.
+		//
+		err = GzipCompressFile(filePath, gzipFilePath, gzip.BestCompression)
+
+		// Try again after a pause.
+		//
+		if err != nil {
+			time.Sleep(time.Millisecond * 250)
+			err = GzipCompressFile(filePath, gzipFilePath, gzip.BestCompression)
+
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		var stat os.FileInfo
+		stat, err = os.Stat(gzipFilePath)
+		if err != nil {
+			return nil, err
+		}
+
+		cacheEntry.gzipFilePath = gzipFilePath
+		cacheEntry.gzipContentLength = int(stat.Size())
+	}
 
 	return cacheEntry, nil
+}
+
+//endregion
+
+//region FsFileReader
+
+// FsFileReader allows to read and stream a small file.
+type FsFileReader struct {
+	filePath string
+	reader   io.Reader
+	lr       *io.LimitedReader
+	file     fs.File
+}
+
+func NewFsFileReader(filePath string) *FsFileReader {
+	return &FsFileReader{filePath: filePath}
+}
+
+func (m *FsFileReader) SeekTo(begin, end int64) error {
+	if m.file == nil {
+		err := m.open()
+		if err != nil {
+			return err
+		}
+	}
+
+	seeker := m.file.(io.Seeker)
+
+	_, err := seeker.Seek(begin, io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	vMax := end - begin
+	if vMax < 0 {
+		vMax = 0
+	}
+
+	m.reader = io.LimitReader(m.reader, vMax)
+
+	return nil
+}
+
+func (m *FsFileReader) Close() error {
+	if m.file != nil {
+		f := m.file
+		m.file = nil
+		return f.Close()
+	}
+
+	return nil
+}
+
+func (m *FsFileReader) open() error {
+	var err error
+	m.file, err = os.OpenFile(m.filePath, os.O_RDONLY, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	m.reader = m.file
+	return nil
+}
+
+func (m *FsFileReader) Read(buffer []byte) (int, error) {
+	if m.file == nil {
+		err := m.open()
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	count, err := m.reader.Read(buffer)
+	if err != nil {
+		_ = m.Close()
+		return count, err
+	}
+
+	if count == 0 {
+		_ = m.Close()
+	}
+
+	return count, nil
 }
 
 //endregion
@@ -278,3 +415,17 @@ func BuildStaticFileServerMiddleware(basePath string, baseDir string, options St
 type StaticFileServerOptions struct {
 	PathRewriteHandler httpServer.PathRewriteHandlerF
 }
+
+var gGzipContentEncoding = []byte("gzip")
+var gHeaderRange = []byte("Range")
+
+// gBigFileSegmentSize allows to limit the size of the data send.
+// Without that video are entirely send each time, even when the read cursor is moved.
+// A little value result in a lot of request, but few data send.
+const gBigFileSegmentSize = 1024 * 1024 * 1 // 1Mo
+
+// gBigFileMinSize allows from which size a file is considered a big file.
+// Big files allows to seek content position, it's the only difference.
+const gBigFileMinSize = gBigFileSegmentSize
+
+const gDontCompressOverSize = 1024 * 1024 * 50 // 50Mo

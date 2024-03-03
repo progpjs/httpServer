@@ -5,8 +5,6 @@ import (
 	"errors"
 	"github.com/progpjs/httpServer/v2"
 	"github.com/valyala/fasthttp"
-	"io"
-	"io/fs"
 	"mime"
 	"net"
 	"os"
@@ -284,10 +282,14 @@ func (m *fastHttpRequest) SendFileAsIs(filePath string, mimeType string, content
 
 	if isUnixFS {
 		lastModifiedSince := osInfo.Mtimespec
-		if !ctx.IfModifiedSince(time.Unix(lastModifiedSince.Sec, lastModifiedSince.Nsec)) {
+		uLastModified := time.Unix(lastModifiedSince.Sec, lastModifiedSince.Nsec)
+
+		if !ctx.IfModifiedSince(uLastModified) {
 			ctx.NotModified()
 			return nil
 		}
+
+		hdr.SetLastModified(uLastModified)
 	}
 
 	if ctx.IsHead() {
@@ -366,97 +368,3 @@ func (m *fastHttpRequest) SendFileAsIs(filePath string, mimeType string, content
 
 	return nil
 }
-
-//region Internal items
-
-var gGzipContentType = []byte("gzip")
-var gHeaderRange = []byte("Range")
-
-// gBigFileSegmentSize allows to limit the size of the data send.
-// Without that video are entirely send each time, even when the read cursor is moved.
-// A little value result in a lot of request, but few data send.
-const gBigFileSegmentSize = 1024 * 1024 * 1 // 1Mo
-
-// gBigFileMinSize allows from which size a file is considered a big file.
-// Big files allows to seek content position, it's the only difference.
-const gBigFileMinSize = gBigFileSegmentSize
-
-// FsFileReader allows to read and stream a small file.
-type FsFileReader struct {
-	filePath string
-	reader   io.Reader
-	lr       *io.LimitedReader
-	file     fs.File
-}
-
-func NewFsFileReader(filePath string) *FsFileReader {
-	return &FsFileReader{filePath: filePath}
-}
-func (m *FsFileReader) SeekTo(begin, end int64) error {
-	if m.file == nil {
-		err := m.open()
-		if err != nil {
-			return err
-		}
-	}
-
-	seeker := m.file.(io.Seeker)
-
-	_, err := seeker.Seek(begin, io.SeekStart)
-	if err != nil {
-		return err
-	}
-
-	vMax := end - begin
-	if vMax < 0 {
-		vMax = 0
-	}
-
-	m.reader = io.LimitReader(m.reader, vMax)
-
-	return nil
-}
-
-func (m *FsFileReader) Close() error {
-	if m.file != nil {
-		f := m.file
-		m.file = nil
-		return f.Close()
-	}
-
-	return nil
-}
-
-func (m *FsFileReader) open() error {
-	var err error
-	m.file, err = os.OpenFile(m.filePath, os.O_RDONLY, os.ModePerm)
-	if err != nil {
-		return err
-	}
-
-	m.reader = m.file
-	return nil
-}
-
-func (m *FsFileReader) Read(buffer []byte) (int, error) {
-	if m.file == nil {
-		err := m.open()
-		if err != nil {
-			return 0, err
-		}
-	}
-
-	count, err := m.reader.Read(buffer)
-	if err != nil {
-		_ = m.Close()
-		return count, err
-	}
-
-	if count == 0 {
-		_ = m.Close()
-	}
-
-	return count, nil
-}
-
-//endregion
