@@ -201,7 +201,7 @@ func (m *fastHttpRequest) RemoteIP() string {
 }
 
 func (m *fastHttpRequest) URI() string {
-	return UnsafeString(m.fast.Request.URI().FullURI())
+	return string(m.fast.Request.URI().FullURI())
 }
 
 func (m *fastHttpRequest) GetHost() *httpServer.HttpHost {

@@ -1,7 +1,23 @@
 package httpServer
 
 type FileCache interface {
-	TrySendFile(call HttpRequest, rewrite PathRewriteHandlerF) (bool, error)
+	TrySendFile(call HttpRequest) (bool, error)
+	RemovePath(path string, includeSubPath bool)
+	RemoveAll()
 }
 
-type PathRewriteHandlerF func(call HttpRequest) (filePath string, dontSend bool, err error)
+type FileCacheRequest struct {
+	Call     HttpRequest
+	BaseDir  string
+	CacheKey string
+}
+
+type FileServerHooks struct {
+	RewriteHook    FsTargetRewriteHookF
+	OnFileNotFound FsOnFileNotFoundHookF
+	OnTooMuchFiles FsOnTooMuchFilesHookF
+}
+
+type FsTargetRewriteHookF func(req *FileCacheRequest) error
+type FsOnFileNotFoundHookF func(call HttpRequest, filePath string) error
+type FsOnTooMuchFilesHookF func(cache FileCache)

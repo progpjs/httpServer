@@ -24,6 +24,11 @@ type SimpleFileCache struct {
 
 	baseDir  string
 	basePath string
+
+	hooks *httpServer.FileServerHooks
+
+	fileCount    int
+	maxFileCount int
 }
 
 type simpleFileCacheEntry struct {
@@ -39,19 +44,49 @@ type simpleFileCacheEntry struct {
 	lastModifiedSince time.Time
 }
 
-func NewSimpleFileCache(basePath string, baseDir string, _ StaticFileServerOptions) *SimpleFileCache {
-	return &SimpleFileCache{
+var gFsEmptyHooks = &httpServer.FileServerHooks{}
+
+func NewSimpleFileCache(basePath string, baseDir string, options StaticFileServerOptions) *SimpleFileCache {
+	m := &SimpleFileCache{
 		basePath: basePath,
 		baseDir:  baseDir,
 		byURI:    make(map[string]*simpleFileCacheEntry),
+		hooks:    options.Hooks,
 	}
+
+	if m.hooks == nil {
+		m.hooks = gFsEmptyHooks
+	}
+	return m
 }
 
-func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest, rewrite httpServer.PathRewriteHandlerF) (bool, error) {
-	// Avoid using an unsafe string du to strange behaviors
-	// when using the string as map key.
-	//
-	cacheKey := call.URI() + "!"
+func (m *SimpleFileCache) RemoveAll() {
+	m.mutex.Lock()
+	m.byURI = make(map[string]*simpleFileCacheEntry)
+	m.mutex.Unlock()
+}
+
+func (m *SimpleFileCache) RemovePath(path string, includeSubPath bool) {
+	// TODO
+}
+
+func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest) (bool, error) {
+	req := httpServer.FileCacheRequest{
+		Call:    call,
+		BaseDir: m.baseDir,
+	}
+
+	if m.hooks.RewriteHook != nil {
+		err := m.hooks.RewriteHook(&req)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	cacheKey := req.CacheKey
+	if cacheKey == "" {
+		cacheKey = call.URI()
+	}
 
 	m.mutex.RLock()
 	cacheEntry := m.byURI[cacheKey]
@@ -68,36 +103,22 @@ func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest, rewrite httpS
 		return true, nil
 	}
 
-	var filePath string
+	baseDir := req.BaseDir
+	filePath := call.Path()
 
-	if rewrite != nil {
-		nFilePath, dontSend, err := rewrite(call)
-		if err != nil {
-			return false, err
-		}
-		if dontSend {
-			return true, nil
-		}
+	if filePath == "" {
+		filePath = "/index.html"
+	} else if filePath[len(filePath)-1] == '/' {
+		filePath += "index.html"
+	}
 
-		filePath = nFilePath
-	} else {
-		filePath = call.Path()
-
-		if filePath == "" {
-			filePath = "/index.html"
-		} else if filePath[len(filePath)-1] == '/' {
-			filePath += "index.html"
-		}
-
-		if !strings.HasPrefix(filePath, m.basePath) {
-			return false, errors.New("invalid cacheKey")
-		}
-
-		filePath = path.Join(m.baseDir, filePath[len(m.basePath):])
+	filePath = path.Join(baseDir, filePath[len(m.basePath):])
+	if !strings.HasPrefix(filePath, baseDir) {
+		return false, errors.New("invalid cacheKey")
 	}
 
 	var err error
-	cacheEntry, err = m.addFileToCache(cacheKey, filePath)
+	cacheEntry, err = m.addFileToCache(call, cacheKey, filePath)
 	if err != nil {
 		return false, err
 	}
@@ -225,10 +246,21 @@ func (m *SimpleFileCache) sendFile(call httpServer.HttpRequest, cacheEntry *simp
 	return nil
 }
 
-func (m *SimpleFileCache) addFileToCache(uri string, filePath string) (*simpleFileCacheEntry, error) {
+func (m *SimpleFileCache) addFileToCache(call httpServer.HttpRequest, cacheKey string, filePath string) (*simpleFileCacheEntry, error) {
 	fileStat, err := os.Stat(filePath)
 	if err != nil {
-		return nil, nil
+		if m.hooks.OnFileNotFound != nil {
+			err = m.hooks.OnFileNotFound(call, filePath)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		fileStat, err = os.Stat(filePath)
+
+		if err != nil {
+			return nil, nil
+		}
 	}
 
 	if fileStat.IsDir() {
@@ -250,7 +282,14 @@ func (m *SimpleFileCache) addFileToCache(uri string, filePath string) (*simpleFi
 	}
 
 	m.mutex.Lock()
-	m.byURI[uri] = cacheEntry
+	m.byURI[cacheKey] = cacheEntry
+	counter := m.fileCount
+	m.fileCount++
+
+	if (counter > m.maxFileCount) && (m.hooks.OnTooMuchFiles != nil) {
+		m.hooks.OnTooMuchFiles(m)
+	}
+
 	m.mutex.Unlock()
 
 	gzipFilePath := filePath + ".gzip"
@@ -397,7 +436,7 @@ func BuildStaticFileServerMiddleware(basePath string, baseDir string, options St
 	fileCache := NewSimpleFileCache(basePath, baseDir, options)
 
 	return func(call httpServer.HttpRequest) error {
-		isFound, err := fileCache.TrySendFile(call, options.PathRewriteHandler)
+		isFound, err := fileCache.TrySendFile(call)
 
 		if isFound {
 			if err != nil {
@@ -413,7 +452,7 @@ func BuildStaticFileServerMiddleware(basePath string, baseDir string, options St
 }
 
 type StaticFileServerOptions struct {
-	PathRewriteHandler httpServer.PathRewriteHandlerF
+	Hooks *httpServer.FileServerHooks
 }
 
 var gGzipContentEncoding = []byte("gzip")
