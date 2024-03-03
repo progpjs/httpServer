@@ -101,9 +101,9 @@ func expectMiddleware(samplePath string, middlewares []string) {
 	res := gUrlResolver.Find(samplePath)
 
 	if len(res.Middlewares) != len(middlewares) {
-		gTest.Error("Invalid middleware count for url [", samplePath, "]",
-			"\n- Found exactMiddlewares count [", len(res.Middlewares), "]",
-			"\n- Expected exactMiddlewares count [", len(middlewares), "]")
+		gTest.Error("Invalid middleware counter for url [", samplePath, "]",
+			"\n- Found exactMiddlewares counter [", len(res.Middlewares), "]",
+			"\n- Expected exactMiddlewares counter [", len(middlewares), "]")
 
 		return
 	}
