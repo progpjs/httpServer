@@ -51,10 +51,10 @@ func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest, rewrite httpS
 	// Avoid using an unsafe string du to strange behaviors
 	// when using the string as map key.
 	//
-	uri := call.URI() + "!"
+	cacheKey := call.URI() + "!"
 
 	m.mutex.RLock()
-	cacheEntry := m.byURI[uri]
+	cacheEntry := m.byURI[cacheKey]
 	m.mutex.RUnlock()
 
 	if cacheEntry != nil {
@@ -90,14 +90,14 @@ func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest, rewrite httpS
 		}
 
 		if !strings.HasPrefix(filePath, m.basePath) {
-			return false, errors.New("invalid uri")
+			return false, errors.New("invalid cacheKey")
 		}
 
 		filePath = path.Join(m.baseDir, filePath[len(m.basePath):])
 	}
 
 	var err error
-	cacheEntry, err = m.addFileToCache(uri, filePath)
+	cacheEntry, err = m.addFileToCache(cacheKey, filePath)
 	if err != nil {
 		return false, err
 	}

@@ -217,6 +217,7 @@ func (m *fastHttpRequest) WaitResponse() {
 }
 
 func (m *fastHttpRequest) Return404UnknownPage() {
+	m.host.OnNotFound(m)
 }
 
 func (m *fastHttpRequest) unlockMutex() {
