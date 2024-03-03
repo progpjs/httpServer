@@ -46,15 +46,3 @@ func BuildProxyAsIsMiddleware(targetHostName string, timeOutInSec int64) (httpSe
 		return err
 	}, nil
 }
-
-/*
-	reader := NewFsFileReader(filePath)
-
-	ctx.SetBodyStream(reader, contentLength)
-	hdr.SetContentLength(contentLength)
-	hdr.SetContentType(mimeType)
-
-	if contentEncoding != "" {
-		hdr.SetContentEncoding(contentEncoding)
-	}
-*/

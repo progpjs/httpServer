@@ -117,7 +117,6 @@ type HttpRequest interface {
 	StopRequest()
 
 	GetWildcards() []string
-	GetRemainingSegment() []string
 
 	SendFile(filePath string) error
 	SendFileAsIs(filePath string, mimeType string, contentEncoding string) error
@@ -257,10 +256,6 @@ func (m *HttpRequestResponseSpy) StopRequest() {
 
 func (m *HttpRequestResponseSpy) GetWildcards() []string {
 	return m.req.GetWildcards()
-}
-
-func (m *HttpRequestResponseSpy) GetRemainingSegment() []string {
-	return m.req.GetRemainingSegment()
 }
 
 func (m *HttpRequestResponseSpy) SendFileAsIs(filePath string, contentType string, contentEncoding string) error {

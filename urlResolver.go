@@ -28,10 +28,7 @@ type UrlResolver struct {
 }
 
 type UrlResolverResult struct {
-	Segments          []string
-	RemainingSegments []string
-	Target            any
-
+	Target      any
 	Middlewares []any
 
 	wildcards    []string
@@ -119,7 +116,6 @@ func (m *UrlResolver) Find(path string) UrlResolverResult {
 		parts = (strings.Split(path, "/"))[1:]
 	}
 
-	result.Segments = parts
 	m.root.find(parts, &result)
 
 	return result
@@ -291,7 +287,6 @@ func (m *urlResolverPathPart) find(segments []string, result *UrlResolverResult)
 		}
 
 		result.Target = m.exactHandler
-		result.RemainingSegments = segments
 
 		if m.exactMiddlewares != nil {
 			result.Middlewares = m.exactMiddlewaresCache
@@ -317,6 +312,8 @@ func (m *urlResolverPathPart) find(segments []string, result *UrlResolverResult)
 	// Starts with a prefix?
 	//
 	if m.beginByMap != nil {
+		// This part is only done once.
+		//
 		if m.beginByMapOrdered == nil {
 			var entries []urlResolverPathWildCard
 
@@ -350,7 +347,6 @@ func (m *urlResolverPathPart) find(segments []string, result *UrlResolverResult)
 	if m.catchAllHandler != nil {
 		if (s0 != "") && (s0 != "/") {
 			result.Target = m.catchAllHandler
-			result.RemainingSegments = segments
 
 			if m.childMiddlewares != nil {
 				result.Middlewares = m.catchAllMiddlewaresCache

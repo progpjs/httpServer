@@ -84,9 +84,6 @@ func expectWildcards(testing string, samplePath string, expectWildcards string, 
 	}
 
 	foundRemaining := ""
-	if len(res.RemainingSegments) != 0 {
-		foundRemaining = strings.Join(res.RemainingSegments, "/")
-	}
 
 	if foundRemaining != expectedRemaining {
 		gTest.Error("Invalid remaining segments for url [", samplePath, "]",

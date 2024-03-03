@@ -32,6 +32,17 @@ func NewFastHttpServer(port int) *FastHttpServer {
 	}
 }
 
+func GetFastHttpServer(serverPort int) httpServer.HttpServer {
+	server := httpServer.GetHttpServer(serverPort)
+
+	if server == nil {
+		server = NewFastHttpServer(serverPort)
+		httpServer.RegisterServer(server)
+	}
+
+	return server
+}
+
 func (m *FastHttpServer) GetPort() int {
 	return m.port
 }

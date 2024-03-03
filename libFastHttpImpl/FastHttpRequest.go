@@ -203,7 +203,7 @@ func (m *fastHttpRequest) RemoteIP() string {
 }
 
 func (m *fastHttpRequest) URI() string {
-	return UnsafeString(m.fast.RequestURI())
+	return UnsafeString(m.fast.Request.URI().FullURI())
 }
 
 func (m *fastHttpRequest) GetHost() *httpServer.HttpHost {
@@ -237,10 +237,6 @@ func (m *fastHttpRequest) GetWildcards() []string {
 	return m.resolvedUrl.GetWildcards()
 }
 
-func (m *fastHttpRequest) GetRemainingSegment() []string {
-	return m.resolvedUrl.RemainingSegments
-}
-
 func (m *fastHttpRequest) SendFile(filePath string) error {
 	if m.isBodySend {
 		return nil
@@ -271,8 +267,9 @@ func (m *fastHttpRequest) SendFileAsIs(filePath string, mimeType string, content
 
 	fileStat, err := os.Stat(filePath)
 	if err != nil {
-		return err
+		return errors.New("file not found")
 	}
+
 	if fileStat.IsDir() {
 		return errors.New("can't send a directory")
 	}

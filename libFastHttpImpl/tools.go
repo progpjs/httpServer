@@ -1,7 +1,6 @@
 package libFastHttpImpl
 
 import (
-	"github.com/progpjs/httpServer/v2"
 	"unsafe"
 )
 
@@ -13,15 +12,4 @@ func UnsafeString(b []byte) string {
 // UnsafeBytes returns a byte pointer without allocation.
 func UnsafeBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s))
-}
-
-func GetFastHttpServer(serverPort int) httpServer.HttpServer {
-	server := httpServer.GetHttpServer(serverPort)
-
-	if server == nil {
-		server = NewFastHttpServer(serverPort)
-		httpServer.RegisterServer(server)
-	}
-
-	return server
 }
