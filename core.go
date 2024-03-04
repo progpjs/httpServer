@@ -52,7 +52,7 @@ type StartParams struct {
 }
 
 // GetHttpServer allows to get the server instance
-// listening to the given port. Return nil if no one.
+// listening to the given port. OnReturnStringAction nil if no one.
 func GetHttpServer(port int) HttpServer {
 	gServerByPortMutex.RLock()
 	s := gServerByPort[port]

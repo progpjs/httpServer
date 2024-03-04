@@ -16,10 +16,13 @@ import (
 	"time"
 )
 
-//region SimpleFileCache
+//region FastFileServer
 
-type SimpleFileCache struct {
-	byURI map[string]*simpleFileCacheEntry
+// TODO: use an optimized map to replace byURI.
+//		 Possibility by using a hash.
+
+type fastFileServer struct {
+	byURI map[string]*fastFileServerEntry
 	mutex sync.RWMutex
 
 	baseDir  string
@@ -31,23 +34,59 @@ type SimpleFileCache struct {
 	maxFileCount int
 }
 
-var gFsEmptyHooks = &httpServer.FileServerHooks{}
-
-func NewSimpleFileCache(basePath string, baseDir string, options StaticFileServerOptions) *SimpleFileCache {
-	m := &SimpleFileCache{
+func newFastFileServer(basePath string, baseDir string, options StaticFileServerOptions) *fastFileServer {
+	m := &fastFileServer{
 		basePath: basePath,
 		baseDir:  baseDir,
-		byURI:    make(map[string]*simpleFileCacheEntry),
+		byURI:    make(map[string]*fastFileServerEntry),
 		hooks:    options.Hooks,
 	}
 
 	if m.hooks == nil {
-		m.hooks = gFsEmptyHooks
+		m.hooks = &httpServer.FileServerHooks{}
 	}
 	return m
 }
 
-func (m *SimpleFileCache) VisitEntries(f func(entry httpServer.FileCacheEntry)) {
+func (m *fastFileServer) Register(host *httpServer.HttpHost) {
+	mdw := func(call httpServer.HttpRequest) error {
+		isFound, err := m.handleRequest(call)
+
+		if isFound {
+			if err != nil {
+				return err
+			}
+
+			return nil
+		}
+
+		call.Return404UnknownPage()
+		return nil
+	}
+
+	basePath := m.basePath
+
+	host.GET(basePath, mdw)
+	host.HEAD(basePath, mdw)
+
+	if basePath[len(basePath)-1] != '/' {
+		basePath += "/*"
+	} else {
+		basePath += "*"
+	}
+
+	host.GET(basePath, mdw)
+	host.HEAD(basePath, mdw)
+}
+
+func (m *fastFileServer) Dispose() {
+}
+
+func (m *fastFileServer) GetHooks() *httpServer.FileServerHooks {
+	return m.hooks
+}
+
+func (m *fastFileServer) VisitCache(f func(entry httpServer.FileServerCacheEntry)) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
@@ -56,13 +95,27 @@ func (m *SimpleFileCache) VisitEntries(f func(entry httpServer.FileCacheEntry)) 
 	}
 }
 
-func (m *SimpleFileCache) RemoveAll() {
+func (m *fastFileServer) RemoveAll() {
 	m.mutex.Lock()
-	m.byURI = make(map[string]*simpleFileCacheEntry)
-	m.mutex.Unlock()
+	defer m.mutex.Unlock()
+
+	oldCache := m.byURI
+	m.byURI = make(map[string]*fastFileServerEntry)
+
+	if m.hooks.OnRemoveCacheItem == nil {
+		for _, cacheEntry := range oldCache {
+			if cacheEntry.gzipFilePath != "" {
+				_ = os.Remove(cacheEntry.gzipFilePath)
+			}
+		}
+	} else {
+		for _, cacheEntry := range oldCache {
+			m.hooks.OnRemoveCacheItem(cacheEntry, "")
+		}
+	}
 }
 
-func (m *SimpleFileCache) RemoveExactUri(uri string, data string) error {
+func (m *fastFileServer) RemoveExactUri(uri string, selectData string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	var toRemove []string
@@ -84,7 +137,8 @@ func (m *SimpleFileCache) RemoveExactUri(uri string, data string) error {
 		}
 	} else {
 		for _, key := range toRemove {
-			if m.hooks.OnRemoveCacheItem(m.byURI[key], data) {
+			// Here selectData allows to filter what to remove exactly.
+			if m.hooks.OnRemoveCacheItem(m.byURI[key], selectData) {
 				delete(m.byURI, key)
 			}
 		}
@@ -93,7 +147,7 @@ func (m *SimpleFileCache) RemoveExactUri(uri string, data string) error {
 	return nil
 }
 
-func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest) (bool, error) {
+func (m *fastFileServer) handleRequest(call httpServer.HttpRequest) (bool, error) {
 	var cacheKey string
 
 	if m.hooks.RewriteCacheKey != nil {
@@ -157,7 +211,7 @@ func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest) (bool, error)
 	return true, nil
 }
 
-func (m *SimpleFileCache) sendFile(call httpServer.HttpRequest, cacheEntry *simpleFileCacheEntry) error {
+func (m *fastFileServer) sendFile(call httpServer.HttpRequest, cacheEntry *fastFileServerEntry) error {
 	fastRequest := call.(*fastHttpRequest)
 	ctx := fastRequest.fast
 
@@ -269,11 +323,16 @@ func (m *SimpleFileCache) sendFile(call httpServer.HttpRequest, cacheEntry *simp
 	return nil
 }
 
-func (m *SimpleFileCache) addFileToCache(call httpServer.HttpRequest, cacheKey string, filePath string) (*simpleFileCacheEntry, error) {
+func (m *fastFileServer) addFileToCache(call httpServer.HttpRequest, cacheKey string, filePath string) (*fastFileServerEntry, error) {
+	var data string
+	if m.hooks.CalcCacheEntryData != nil {
+		data = m.hooks.CalcCacheEntryData(call)
+	}
+
 	fileStat, err := os.Stat(filePath)
 	if err != nil {
 		if m.hooks.OnFileNotFound != nil {
-			err = m.hooks.OnFileNotFound(call, filePath)
+			err = m.hooks.OnFileNotFound(call, filePath, data)
 			if err != nil {
 				return nil, err
 			}
@@ -296,12 +355,7 @@ func (m *SimpleFileCache) addFileToCache(call httpServer.HttpRequest, cacheKey s
 	osInfo, _ := fileStat.Sys().(*syscall.Stat_t)
 	lastModifiedSince := osInfo.Mtimespec
 
-	var data string
-	if m.hooks.CalcCacheEntryData != nil {
-		data = m.hooks.CalcCacheEntryData(call)
-	}
-
-	cacheEntry := &simpleFileCacheEntry{
+	cacheEntry := &fastFileServerEntry{
 		counter:        1,
 		data:           data,
 		uri:            call.FullURI(),
@@ -356,9 +410,9 @@ func (m *SimpleFileCache) addFileToCache(call httpServer.HttpRequest, cacheKey s
 
 //endregion
 
-//region simpleFileCacheEntry
+//region fastFileServerEntry
 
-type simpleFileCacheEntry struct {
+type fastFileServerEntry struct {
 	counter int
 
 	uri           string
@@ -378,27 +432,43 @@ type simpleFileCacheEntry struct {
 	data string
 }
 
-func (m *simpleFileCacheEntry) GetFilePath() string {
+func (m *fastFileServerEntry) GetHitCount() int {
+	return m.counter
+}
+
+func (m *fastFileServerEntry) GetFilePath() string {
 	return m.filePath
 }
 
-func (m *simpleFileCacheEntry) GetGzipFilePath() string {
+func (m *fastFileServerEntry) GetContentType() string {
+	return m.contentType
+}
+
+func (m *fastFileServerEntry) GetContentLength() int {
+	return m.contentLength
+}
+
+func (m *fastFileServerEntry) GetGzipContentLength() int {
+	return m.gzipContentLength
+}
+
+func (m *fastFileServerEntry) GetGzipFilePath() string {
 	return m.gzipFilePath
 }
 
-func (m *simpleFileCacheEntry) GetFullUri() string {
+func (m *fastFileServerEntry) GetFullUri() string {
 	return m.uri
 }
 
-func (m *simpleFileCacheEntry) GetData() string {
+func (m *fastFileServerEntry) GetData() string {
 	return m.data
 }
 
-func (m *simpleFileCacheEntry) GetFileUpdateDate() time.Time {
+func (m *fastFileServerEntry) GetFileUpdateDate() time.Time {
 	return m.fileUpdateDate
 }
 
-func (m *simpleFileCacheEntry) GetLastRequestedDate() time.Time {
+func (m *fastFileServerEntry) GetLastRequestedDate() time.Time {
 	return m.lastRequestedDate
 }
 
@@ -487,7 +557,7 @@ func (m *FsFileReader) Read(buffer []byte) (int, error) {
 
 //endregion
 
-func BuildStaticFileServerMiddleware(basePath string, baseDir string, options StaticFileServerOptions) (httpServer.HttpMiddleware, error) {
+func NewFileServer(basePath string, baseDir string, options StaticFileServerOptions) (httpServer.FileServer, error) {
 	baseDir = path.Clean(baseDir)
 
 	if strings.HasPrefix(baseDir, "~") {
@@ -508,25 +578,8 @@ func BuildStaticFileServerMiddleware(basePath string, baseDir string, options St
 		return nil, errors.New("invalid dir path")
 	}
 
-	// TODO: use options to build the instance
-	//       in order to be able to hack it
-	//
-	fileCache := NewSimpleFileCache(basePath, baseDir, options)
+	return newFastFileServer(basePath, baseDir, options), nil
 
-	return func(call httpServer.HttpRequest) error {
-		isFound, err := fileCache.TrySendFile(call)
-
-		if isFound {
-			if err != nil {
-				return err
-			}
-
-			return nil
-		}
-
-		call.Return404UnknownPage()
-		return nil
-	}, nil
 }
 
 type StaticFileServerOptions struct {
