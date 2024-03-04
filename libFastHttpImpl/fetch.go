@@ -44,7 +44,7 @@ func initFetchHttpClient() {
 		Dial: (&fasthttp.TCPDialer{
 			Concurrency: 4096,
 
-			// The cache allow to keep info url <--> ip.
+			// The cache allow to keep info uri <--> ip.
 			// Here keep it on hour.
 			//
 			DNSCacheDuration: time.Hour,

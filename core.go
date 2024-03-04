@@ -101,7 +101,8 @@ type HttpRequest interface {
 	SetCookie(key string, value string, cookie HttpCookieOptions) error
 
 	Path() string
-	URI() string
+	URI() UriReader
+	FullURI() string
 
 	UserAgent() string
 	RemoteIP() string
@@ -216,8 +217,12 @@ func (m *HttpRequestResponseSpy) Path() string {
 	return m.req.Path()
 }
 
-func (m *HttpRequestResponseSpy) URI() string {
+func (m *HttpRequestResponseSpy) URI() UriReader {
 	return m.req.URI()
+}
+
+func (m *HttpRequestResponseSpy) FullURI() string {
+	return m.req.FullURI()
 }
 
 func (m *HttpRequestResponseSpy) UserAgent() string {
@@ -481,6 +486,18 @@ type ValueSet interface {
 	GetUintOrZero(key string) int
 
 	GetBool(key string) bool
+}
+
+//endregion
+
+//region UriReader
+
+type UriReader interface {
+	UriPath() []byte
+	UriArgs(f func(key, value []byte))
+	UriQueryString() []byte
+	UriScheme() []byte
+	UriHost() []byte
 }
 
 //endregion

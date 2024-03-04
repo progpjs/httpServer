@@ -32,6 +32,7 @@ type fastHttpRequest struct {
 	resolvedUrl  httpServer.UrlResolverResult
 
 	multiPartForm *httpServer.HttpMultiPartForm
+	uri           *fasthttp.URI
 }
 
 func prepareFastHttpRequest(methodName string, methodCode httpServer.HttpMethod, reqPath string, fast *fasthttp.RequestCtx) *fastHttpRequest {
@@ -200,8 +201,52 @@ func (m *fastHttpRequest) RemoteIP() string {
 	}
 }
 
-func (m *fastHttpRequest) URI() string {
-	return string(m.fast.Request.URI().FullURI())
+func (m *fastHttpRequest) URI() httpServer.UriReader {
+	return m
+}
+
+func (m *fastHttpRequest) FullURI() string {
+	return string(m.uri.FullURI())
+}
+
+func (m *fastHttpRequest) UriPath() []byte {
+	if m.uri == nil {
+		m.uri = m.fast.Request.URI()
+	}
+
+	return m.uri.Path()
+}
+
+func (m *fastHttpRequest) UriArgs(f func(key, value []byte)) {
+	if m.uri == nil {
+		m.uri = m.fast.Request.URI()
+	}
+
+	m.uri.QueryArgs().VisitAll(f)
+}
+
+func (m *fastHttpRequest) UriQueryString() []byte {
+	if m.uri == nil {
+		m.uri = m.fast.Request.URI()
+	}
+
+	return m.uri.QueryString()
+}
+
+func (m *fastHttpRequest) UriScheme() []byte {
+	if m.uri == nil {
+		m.uri = m.fast.Request.URI()
+	}
+
+	return m.uri.Scheme()
+}
+
+func (m *fastHttpRequest) UriHost() []byte {
+	if m.uri == nil {
+		m.uri = m.fast.Request.URI()
+	}
+
+	return m.uri.Host()
 }
 
 func (m *fastHttpRequest) GetHost() *httpServer.HttpHost {

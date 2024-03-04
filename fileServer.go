@@ -1,9 +1,12 @@
 package httpServer
 
+import "time"
+
 type FileCache interface {
 	TrySendFile(call HttpRequest) (bool, error)
-	RemovePath(path string, includeSubPath bool)
+	RemoveExactUri(uri string, data string) error
 	RemoveAll()
+	VisitEntries(func(entry FileCacheEntry))
 }
 
 type FileCacheRequest struct {
@@ -13,11 +16,26 @@ type FileCacheRequest struct {
 }
 
 type FileServerHooks struct {
-	RewriteHook    FsTargetRewriteHookF
-	OnFileNotFound FsOnFileNotFoundHookF
-	OnTooMuchFiles FsOnTooMuchFilesHookF
+	RewriteCacheKey    FsTargetRewriteCacheKeyF
+	CalcCacheEntryData FsTCalcCacheEntryDataF
+	RewriteBaseDir     FsTargetRewriteBaseDirKeyF
+	OnFileNotFound     FsOnFileNotFoundHookF
+	OnTooMuchFiles     FsOnTooMuchFilesHookF
+	OnRemoveCacheItem  FsOnRemoveCacheItemHookF
 }
 
-type FsTargetRewriteHookF func(req *FileCacheRequest) error
+type FileCacheEntry interface {
+	GetFilePath() string
+	GetGzipFilePath() string
+	GetFullUri() string
+	GetData() string
+	GetFileUpdateDate() time.Time
+	GetLastRequestedDate() time.Time
+}
+
+type FsTargetRewriteCacheKeyF func(call HttpRequest) string
+type FsTCalcCacheEntryDataF func(call HttpRequest) string
+type FsTargetRewriteBaseDirKeyF func(call HttpRequest, defaultBaseDir string) string
 type FsOnFileNotFoundHookF func(call HttpRequest, filePath string) error
 type FsOnTooMuchFilesHookF func(cache FileCache)
+type FsOnRemoveCacheItemHookF func(cacheEntry FileCacheEntry, data string) (mustRemove bool)

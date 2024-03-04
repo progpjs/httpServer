@@ -31,19 +31,6 @@ type SimpleFileCache struct {
 	maxFileCount int
 }
 
-type simpleFileCacheEntry struct {
-	counter int
-
-	filePath      string
-	contentLength int
-
-	gzipFilePath      string
-	gzipContentLength int
-
-	contentType       string
-	lastModifiedSince time.Time
-}
-
 var gFsEmptyHooks = &httpServer.FileServerHooks{}
 
 func NewSimpleFileCache(basePath string, baseDir string, options StaticFileServerOptions) *SimpleFileCache {
@@ -60,32 +47,62 @@ func NewSimpleFileCache(basePath string, baseDir string, options StaticFileServe
 	return m
 }
 
+func (m *SimpleFileCache) VisitEntries(f func(entry httpServer.FileCacheEntry)) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	for _, entry := range m.byURI {
+		f(entry)
+	}
+}
+
 func (m *SimpleFileCache) RemoveAll() {
 	m.mutex.Lock()
 	m.byURI = make(map[string]*simpleFileCacheEntry)
 	m.mutex.Unlock()
 }
 
-func (m *SimpleFileCache) RemovePath(path string, includeSubPath bool) {
-	// TODO
-}
+func (m *SimpleFileCache) RemoveExactUri(uri string, data string) error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	var toRemove []string
 
-func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest) (bool, error) {
-	req := httpServer.FileCacheRequest{
-		Call:    call,
-		BaseDir: m.baseDir,
-	}
-
-	if m.hooks.RewriteHook != nil {
-		err := m.hooks.RewriteHook(&req)
-		if err != nil {
-			return false, err
+	for cacheKey, entry := range m.byURI {
+		if entry.uri == uri {
+			toRemove = append(toRemove, cacheKey)
 		}
 	}
 
-	cacheKey := req.CacheKey
-	if cacheKey == "" {
-		cacheKey = call.URI()
+	if m.hooks.OnRemoveCacheItem == nil {
+		for _, key := range toRemove {
+			cacheEntry := m.byURI[key]
+			if cacheEntry.gzipFilePath != "" {
+				_ = os.Remove(cacheEntry.gzipFilePath)
+			}
+
+			delete(m.byURI, key)
+		}
+	} else {
+		for _, key := range toRemove {
+			if m.hooks.OnRemoveCacheItem(m.byURI[key], data) {
+				delete(m.byURI, key)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest) (bool, error) {
+	var cacheKey string
+
+	if m.hooks.RewriteCacheKey != nil {
+		// Warning: cache key must be a true string here and not an unsafeString get from bytes.
+		// Only true string works correctly with map index.
+		//
+		cacheKey = m.hooks.RewriteCacheKey(call)
+	} else {
+		cacheKey = string(call.URI().UriPath())
 	}
 
 	m.mutex.RLock()
@@ -103,7 +120,12 @@ func (m *SimpleFileCache) TrySendFile(call httpServer.HttpRequest) (bool, error)
 		return true, nil
 	}
 
-	baseDir := req.BaseDir
+	baseDir := m.baseDir
+
+	if m.hooks.RewriteBaseDir != nil {
+		baseDir = m.hooks.RewriteBaseDir(call, baseDir)
+	}
+
 	filePath := call.Path()
 
 	if filePath == "" {
@@ -139,13 +161,14 @@ func (m *SimpleFileCache) sendFile(call httpServer.HttpRequest, cacheEntry *simp
 	fastRequest := call.(*fastHttpRequest)
 	ctx := fastRequest.fast
 
-	if !ctx.IfModifiedSince(cacheEntry.lastModifiedSince) {
+	cacheEntry.lastRequestedDate = time.Now()
+	if !ctx.IfModifiedSince(cacheEntry.fileUpdateDate) {
 		ctx.NotModified()
 		return nil
 	}
 
 	hdr := &ctx.Response.Header
-	hdr.SetLastModified(cacheEntry.lastModifiedSince)
+	hdr.SetLastModified(cacheEntry.fileUpdateDate)
 
 	statusCode := 200
 
@@ -273,12 +296,19 @@ func (m *SimpleFileCache) addFileToCache(call httpServer.HttpRequest, cacheKey s
 	osInfo, _ := fileStat.Sys().(*syscall.Stat_t)
 	lastModifiedSince := osInfo.Mtimespec
 
+	var data string
+	if m.hooks.CalcCacheEntryData != nil {
+		data = m.hooks.CalcCacheEntryData(call)
+	}
+
 	cacheEntry := &simpleFileCacheEntry{
-		counter:           1,
-		filePath:          filePath,
-		contentType:       mimeType,
-		contentLength:     contentLength,
-		lastModifiedSince: time.Unix(lastModifiedSince.Sec, lastModifiedSince.Nsec),
+		counter:        1,
+		data:           data,
+		uri:            call.FullURI(),
+		filePath:       filePath,
+		contentType:    mimeType,
+		contentLength:  contentLength,
+		fileUpdateDate: time.Unix(lastModifiedSince.Sec, lastModifiedSince.Nsec),
 	}
 
 	m.mutex.Lock()
@@ -322,6 +352,54 @@ func (m *SimpleFileCache) addFileToCache(call httpServer.HttpRequest, cacheKey s
 	}
 
 	return cacheEntry, nil
+}
+
+//endregion
+
+//region simpleFileCacheEntry
+
+type simpleFileCacheEntry struct {
+	counter int
+
+	uri           string
+	filePath      string
+	contentLength int
+
+	gzipFilePath      string
+	gzipContentLength int
+
+	contentType       string
+	fileUpdateDate    time.Time
+	lastRequestedDate time.Time
+
+	// Allow to set data to a cache entry in order to seperated two entry
+	// with the same uri. For example on entry for a special user and another for
+	// other users.
+	data string
+}
+
+func (m *simpleFileCacheEntry) GetFilePath() string {
+	return m.filePath
+}
+
+func (m *simpleFileCacheEntry) GetGzipFilePath() string {
+	return m.gzipFilePath
+}
+
+func (m *simpleFileCacheEntry) GetFullUri() string {
+	return m.uri
+}
+
+func (m *simpleFileCacheEntry) GetData() string {
+	return m.data
+}
+
+func (m *simpleFileCacheEntry) GetFileUpdateDate() time.Time {
+	return m.fileUpdateDate
+}
+
+func (m *simpleFileCacheEntry) GetLastRequestedDate() time.Time {
+	return m.lastRequestedDate
 }
 
 //endregion
@@ -455,9 +533,6 @@ type StaticFileServerOptions struct {
 	Hooks *httpServer.FileServerHooks
 }
 
-var gGzipContentEncoding = []byte("gzip")
-var gHeaderRange = []byte("Range")
-
 // gBigFileSegmentSize allows to limit the size of the data send.
 // Without that video are entirely send each time, even when the read cursor is moved.
 // A little value result in a lot of request, but few data send.
@@ -468,3 +543,6 @@ const gBigFileSegmentSize = 1024 * 1024 * 1 // 1Mo
 const gBigFileMinSize = gBigFileSegmentSize
 
 const gDontCompressOverSize = 1024 * 1024 * 50 // 50Mo
+
+var gGzipContentEncoding = []byte("gzip")
+var gHeaderRange = []byte("Range")
