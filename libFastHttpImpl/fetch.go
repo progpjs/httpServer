@@ -67,13 +67,32 @@ func Fetch(url string, methodName string, options FetchOptions) (httpServer.Fetc
 		initFetchHttpClient()
 	}
 
+	var port string
 	portIdx := strings.Index(url, ":")
+	//
 	if portIdx == -1 {
 		if strings.HasPrefix(url, "https://") {
 			url += ":443"
+			port = ":443"
 		} else {
 			url += ":80"
+			port = ":80"
 		}
+	} else {
+		port = url[portIdx:]
+	}
+
+	var hostName string
+	hostNameIdx := strings.Index(url, "/")
+	if hostNameIdx == -1 {
+		hostName = url[0:portIdx]
+	} else {
+		hostName = url[0:hostNameIdx] + port
+	}
+
+	protoIdx := strings.Index(hostName, "://")
+	if protoIdx != -1 {
+		hostName = hostName[protoIdx+3:]
 	}
 
 	req := fasthttp.AcquireRequest()
@@ -96,8 +115,13 @@ func Fetch(url string, methodName string, options FetchOptions) (httpServer.Fetc
 		req.Header.SetUserAgent(options.UserAgent)
 	}
 
-	req.SetRequestURI(url)
 	req.Header.SetMethod(methodName)
+	req.SetRequestURI(url)
+
+	// This allows to request a server with only his IP
+	// while the server filter on hostname.
+	//
+	req.Header.SetHost(hostName)
 
 	if options.SendHeaders != nil {
 		for k, v := range options.SendHeaders {
@@ -112,11 +136,11 @@ func Fetch(url string, methodName string, options FetchOptions) (httpServer.Fetc
 	}
 
 	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
 
 	resp.SkipBody = options.SkipBody
 
 	err := gFetchHttpClient.Do(req, resp)
+	//err := gFetchHttpClient.DoRedirects(req, resp, 5)
 	if err != nil {
 		return nil, err
 	}
@@ -155,8 +179,7 @@ func (m *fetchResultImpl) StreamBodyToFile(filePath string) error {
 		_ = fileH.Close()
 	}()
 
-	_, err = m.resp.WriteTo(fileH)
-	return err
+	return m.resp.BodyWriteTo(fileH)
 }
 
 func (m *fetchResultImpl) Dispose() {
@@ -171,7 +194,7 @@ func (m *fetchResultImpl) GetBody() ([]byte, error) {
 }
 
 func (m *fetchResultImpl) GetBodyAsString() (string, error) {
-	b, err := m.resp.BodyUncompressed()
+	b, err := m.GetBody()
 	if err != nil {
 		return "", err
 	}
