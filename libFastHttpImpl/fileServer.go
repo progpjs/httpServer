@@ -12,7 +12,6 @@ import (
 	"path"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -352,8 +351,7 @@ func (m *fastFileServer) addFileToCache(call httpServer.HttpRequest, cacheKey st
 	contentLength := int(fileStat.Size())
 	mimeType := mime.TypeByExtension(path.Ext(filePath))
 
-	osInfo, _ := fileStat.Sys().(*syscall.Stat_t)
-	lastModifiedSince := osInfo.Mtimespec
+	lastModifiedSince := getUpdateDate(fileStat)
 
 	cacheEntry := &fastFileServerEntry{
 		counter:        1,

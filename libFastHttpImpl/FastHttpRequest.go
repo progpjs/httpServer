@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -324,19 +323,15 @@ func (m *fastHttpRequest) SendFileAsIs(filePath string, mimeType string, content
 		mimeType = mime.TypeByExtension(path.Ext(filePath))
 	}
 
-	osInfo, isUnixFS := fileStat.Sys().(*syscall.Stat_t)
+	lastModifiedSince := getUpdateDate(fileStat)
+	uLastModified := time.Unix(lastModifiedSince.Sec, lastModifiedSince.Nsec)
 
-	if isUnixFS {
-		lastModifiedSince := osInfo.Mtimespec
-		uLastModified := time.Unix(lastModifiedSince.Sec, lastModifiedSince.Nsec)
-
-		if !ctx.IfModifiedSince(uLastModified) {
-			ctx.NotModified()
-			return nil
-		}
-
-		hdr.SetLastModified(uLastModified)
+	if !ctx.IfModifiedSince(uLastModified) {
+		ctx.NotModified()
+		return nil
 	}
+
+	hdr.SetLastModified(uLastModified)
 
 	if ctx.IsHead() {
 		// Head type request only request information about the file.
